@@ -62,13 +62,9 @@ function createTabContent(tab: TabRecord): HTMLElement {
 
   const name = document.createElement('p')
   name.className = 'text-sm font-semibold text-gray-800'
-  name.textContent = tab.name
+  name.textContent = tab.path
 
-  const meta = document.createElement('span')
-  meta.className = 'text-xs text-gray-500'
-  meta.textContent = `${tab.kind.toUpperCase()} • ${tab.path}`
-
-  title.append(name, meta)
+  title.append(name)
   header.appendChild(title)
   panel.appendChild(header)
 
@@ -76,7 +72,7 @@ function createTabContent(tab: TabRecord): HTMLElement {
   body.className = 'p-4 bg-slate-50'
 
   if (tab.kind === 'xml' && tab.content) {
-    const viewer = createXmlViewer({ xml: tab.content, title: tab.name })
+    const viewer = createXmlViewer({ xml: tab.content })
     body.appendChild(viewer.element)
   } else {
     const placeholder = document.createElement('div')
