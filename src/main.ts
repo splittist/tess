@@ -115,8 +115,28 @@ appEvents.addEventListener(FILE_OPENED, (event) => {
     return
   }
 
-  const file = demoPackage.byPath[detail.path]
-  tabs.open(detail, file?.text)
+  const title = document.createElement('p')
+  title.className = 'font-semibold text-sm text-gray-800'
+  title.textContent = detail.name
+
+  const meta = document.createElement('p')
+  meta.className = 'text-xs text-gray-600 mt-1'
+  meta.textContent = `Image preview requested for ${detail.path}`
+
+  const placeholder = document.createElement('div')
+  placeholder.className =
+    'mt-3 h-36 rounded-lg border border-dashed border-gray-300 bg-gradient-to-br from-indigo-50 to-blue-50 flex items-center justify-center text-sm text-gray-500'
+  placeholder.textContent = 'Preview will render here once available.'
+
+  imagePreview.append(title, meta, placeholder)
+}
+
+appEvents.addEventListener(FILE_OPENED, (event) => {
+  const detail = (event as CustomEvent<FileEventDetail>).detail
+  if (!tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
+    const file = demoPackage.byPath[detail.path]
+    tabs.open(detail, file?.text)
+  }
 })
 
 if (tabPanel) {
