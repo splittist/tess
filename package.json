@@ -1,0 +1,27 @@
+{
+  "name": "tess",
+  "version": "1.0.0",
+  "description": "Tess is a browser-based DOCX inspection tool for exploring OPC packages at a structural and XML level. It is designed primarily as a personal development aid for DOCX tooling work.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^25.0.3",
+    "autoprefixer": "^10.4.23",
+    "jsdom": "^27.3.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.16"
+  }
+}
