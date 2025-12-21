@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createXmlViewer } from './xml-viewer'
+import { RelationshipsBySource } from '../../core/relationships'
 
 describe('xml-viewer', () => {
   describe('createXmlViewer', () => {
@@ -97,6 +98,47 @@ describe('xml-viewer', () => {
         toggleButton.click()
         expect(toggleButton.title).toBe('Collapse element')
       })
+    })
+
+    it('detects and navigates relationship references', () => {
+      const relationshipsBySource: RelationshipsBySource = {
+        'word/document.xml': {
+          rId1: {
+            id: 'rId1',
+            target: 'media/image1.png',
+            resolvedTarget: 'word/media/image1.png',
+            source: 'word/_rels/document.xml.rels',
+            type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+          }
+        }
+      }
+
+      const xml = '<root xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><rel r:id="rId1" /></root>'
+      const onReferenceNavigate = vi.fn()
+      const viewer = createXmlViewer({
+        xml,
+        path: 'word/document.xml',
+        relationshipsBySource,
+        onReferenceNavigate
+      })
+
+      const reference = viewer.element.querySelector('button[title^=\"Open rId1\"]') as HTMLButtonElement
+      expect(reference).toBeTruthy()
+
+      reference.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/document.xml',
+        targetPath: 'word/media/image1.png',
+        scrollTarget: undefined
+      })
+    })
+
+    it('scrolls to anchors when requested', () => {
+      const xml = '<root id=\"root\"><child id=\"target\">text</child></root>'
+      const viewer = createXmlViewer({ xml, path: 'word/document.xml' })
+
+      const scrolled = viewer.scrollToAnchor({ attribute: 'id', value: 'target' })
+      expect(scrolled).toBe(true)
     })
   })
 })

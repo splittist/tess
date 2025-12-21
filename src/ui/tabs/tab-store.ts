@@ -1,14 +1,15 @@
-import { FileEventDetail } from '../events'
+import { FileEventDetail, ScrollTarget } from '../events'
 
 export interface TabRecord extends FileEventDetail {
   content?: string
+  scrollTarget?: ScrollTarget
 }
 
 export interface TabStoreHandle {
-  open(detail: FileEventDetail, content?: string): void
+  open(detail: FileEventDetail, content?: string, scrollTarget?: ScrollTarget): void
   close(path: string): void
   closeAll(): void
-  focus(path: string): void
+  focus(path: string, scrollTarget?: ScrollTarget): void
   subscribe(listener: (state: TabStoreState) => void): () => void
   getState(): TabStoreState
 }
@@ -26,15 +27,19 @@ export function createTabStore(): TabStoreHandle {
     for (const listener of listeners) listener(state)
   }
 
-  function open(detail: FileEventDetail, content?: string): void {
-    const existing = state.tabs.find((tab) => tab.path === detail.path)
-    if (existing) {
-      state = { ...state, activePath: detail.path }
+  function open(detail: FileEventDetail, content?: string, scrollTarget?: ScrollTarget): void {
+    const existingIndex = state.tabs.findIndex((tab) => tab.path === detail.path)
+    if (existingIndex >= 0) {
+      const tabs = [...state.tabs]
+      const existing = tabs[existingIndex]
+      const updated = scrollTarget ? { ...existing, scrollTarget } : existing
+      tabs[existingIndex] = updated
+      state = { ...state, tabs, activePath: detail.path }
       notify()
       return
     }
 
-    const tab: TabRecord = { ...detail, content }
+    const tab: TabRecord = { ...detail, content, scrollTarget }
     state = {
       tabs: [...state.tabs, tab],
       activePath: detail.path
@@ -55,9 +60,18 @@ export function createTabStore(): TabStoreHandle {
     notify()
   }
 
-  function focus(path: string): void {
-    if (state.activePath === path || !state.tabs.find((tab) => tab.path === path)) return
-    state = { ...state, activePath: path }
+  function focus(path: string, scrollTarget?: ScrollTarget): void {
+    const index = state.tabs.findIndex((tab) => tab.path === path)
+    if (index === -1) return
+
+    const tabs = [...state.tabs]
+    if (scrollTarget) {
+      tabs[index] = { ...tabs[index], scrollTarget }
+    }
+
+    if (state.activePath === path && !scrollTarget) return
+
+    state = { ...state, tabs, activePath: path }
     notify()
   }
 

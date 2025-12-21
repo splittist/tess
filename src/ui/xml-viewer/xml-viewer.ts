@@ -1,10 +1,17 @@
+import { RelationshipsBySource } from '../../core/relationships'
+import { ReferenceNavigationDetail, ScrollTarget } from '../events'
+
 interface XmlViewerOptions {
   xml: string
   title?: string
+  path?: string
+  relationshipsBySource?: RelationshipsBySource
+  onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
 }
 
 interface XmlViewerHandle {
   element: HTMLElement
+  scrollToAnchor(target: ScrollTarget): boolean
 }
 
 function createToken(text: string, className: string): HTMLSpanElement {
@@ -12,6 +19,96 @@ function createToken(text: string, className: string): HTMLSpanElement {
   span.className = className
   span.textContent = text
   return span
+}
+
+interface ReferenceDetectionContext {
+  sourcePath?: string
+  relationshipsBySource?: RelationshipsBySource
+  onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
+}
+
+interface AttributeReference {
+  targetPath: string
+  label: string
+  scrollTarget?: ScrollTarget
+}
+
+interface ReferenceIndex {
+  register(attribute: string, value: string, element: HTMLElement): void
+  scrollTo(target: ScrollTarget): boolean
+}
+
+function anchorKey(attribute: string, value: string): string {
+  return `${attribute.toLowerCase()}::${value}`
+}
+
+function createReferenceIndex(): ReferenceIndex {
+  const anchors = new Map<string, HTMLElement>()
+
+  function register(attribute: string, value: string, element: HTMLElement): void {
+    anchors.set(anchorKey(attribute, value), element)
+  }
+
+  function scrollTo(target: ScrollTarget): boolean {
+    const anchor = anchors.get(anchorKey(target.attribute, target.value))
+    if (!anchor) return false
+
+    if (typeof anchor.scrollIntoView === 'function') {
+      anchor.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+    anchor.classList.add('bg-amber-50')
+    setTimeout(() => anchor.classList.remove('bg-amber-50'), 1200)
+    return true
+  }
+
+  return { register, scrollTo }
+}
+
+function looksLikeRelationshipId(attribute: Attr): boolean {
+  const name = attribute.name.toLowerCase()
+  const value = attribute.value
+  return name === 'r:id' || name.endsWith(':id') || name === 'id' || /^rId\d+$/i.test(value)
+}
+
+function resolveRelationshipReference(attribute: Attr, context: ReferenceDetectionContext): AttributeReference | null {
+  if (context.sourcePath === undefined || !context.relationshipsBySource || !looksLikeRelationshipId(attribute)) return null
+
+  const relationships = context.relationshipsBySource[context.sourcePath]
+  const relationship = relationships?.[attribute.value]
+  if (!relationship || relationship.targetMode?.toLowerCase() === 'external') return null
+
+  return {
+    targetPath: relationship.resolvedTarget,
+    label: `${attribute.value} → ${relationship.resolvedTarget}`
+  }
+}
+
+function resolveCommentReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  if (context.sourcePath === undefined || !context.relationshipsBySource) return null
+
+  const tagName = element.tagName.toLowerCase()
+  const attrName = attribute.name.toLowerCase()
+  const value = attribute.value
+
+  const isCommentReference = tagName.includes('comment') && attrName.endsWith('id') && /^\d+$/.test(value)
+  if (!isCommentReference) return null
+
+  const relationships = context.relationshipsBySource[context.sourcePath]
+  const commentRelationship = Object.values(relationships ?? {}).find((rel) =>
+    (rel.type ?? '').toLowerCase().includes('/comments')
+  )
+
+  if (!commentRelationship) return null
+
+  return {
+    targetPath: commentRelationship.resolvedTarget,
+    label: `comment ${value}`,
+    scrollTarget: { attribute: attribute.name, value }
+  }
+}
+
+function detectReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  return resolveRelationshipReference(attribute, context) ?? resolveCommentReference(attribute, element, context)
 }
 
 function createLineRow(content: Node, depth: number, lineNumber: number, toggleButton?: HTMLButtonElement): HTMLDivElement {
@@ -37,11 +134,39 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
   return row
 }
 
-function createAttributeTokens(attribute: Attr): DocumentFragment {
+function createReferenceButton(label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className =
+    'text-emerald-700 underline decoration-dotted underline-offset-4 hover:text-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 rounded px-0.5'
+  button.textContent = label
+  button.addEventListener('click', (event) => {
+    event.stopPropagation()
+    onClick()
+  })
+  return button
+}
+
+function createAttributeTokens(attribute: Attr, element: Element, referenceContext?: ReferenceDetectionContext): DocumentFragment {
   const frag = document.createDocumentFragment()
   frag.appendChild(createToken(attribute.name, 'text-amber-700'))
   frag.appendChild(createToken('=', 'text-gray-400'))
-  frag.appendChild(createToken(`"${attribute.value}"`, 'text-emerald-700'))
+
+  const reference = referenceContext ? detectReference(attribute, element, referenceContext) : null
+  if (reference && reference.targetPath) {
+    const button = createReferenceButton(`"${attribute.value}"`, () => {
+      referenceContext?.onReferenceNavigate?.({
+        sourcePath: referenceContext.sourcePath ?? '',
+        targetPath: reference.targetPath,
+        scrollTarget: reference.scrollTarget
+      })
+    })
+    button.title = `Open ${reference.label}`
+    frag.appendChild(button)
+  } else {
+    frag.appendChild(createToken(`"${attribute.value}"`, 'text-emerald-700'))
+  }
+
   return frag
 }
 
@@ -62,10 +187,17 @@ function renderCommentNode(text: string, depth: number, lineNumber: number): HTM
   return createLineRow(frag, depth, lineNumber)
 }
 
+function isAnchorAttribute(attribute: Attr): boolean {
+  const name = attribute.name.toLowerCase()
+  return name === 'id' || name.endsWith(':id') || name.endsWith('id')
+}
+
 function renderElement(
   element: Element,
   depth: number,
-  lineCounter: { current: number }
+  lineCounter: { current: number },
+  referenceIndex: ReferenceIndex,
+  referenceContext?: ReferenceDetectionContext
 ): HTMLDivElement {
   const container = document.createElement('div')
   container.className = 'space-y-0'
@@ -83,9 +215,15 @@ function renderElement(
   openTag.appendChild(createToken('<', 'text-gray-400'))
   openTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
 
+  const anchorAttributes: Attr[] = []
+
   for (const attr of Array.from(element.attributes)) {
     openTag.appendChild(document.createTextNode(' '))
-    openTag.appendChild(createAttributeTokens(attr))
+    openTag.appendChild(createAttributeTokens(attr, element, referenceContext))
+
+    if (isAnchorAttribute(attr)) {
+      anchorAttributes.push(attr)
+    }
   }
 
   openTag.appendChild(createToken('>', 'text-gray-400'))
@@ -93,12 +231,16 @@ function renderElement(
   const openLine = createLineRow(openTag, depth, lineCounter.current++, toggle)
   container.appendChild(openLine)
 
+  for (const attr of anchorAttributes) {
+    referenceIndex.register(attr.name, attr.value, openLine)
+  }
+
   const childrenWrapper = document.createElement('div')
   container.appendChild(childrenWrapper)
 
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
-      childrenWrapper.appendChild(renderElement(child as Element, depth + 1, lineCounter))
+      childrenWrapper.appendChild(renderElement(child as Element, depth + 1, lineCounter, referenceIndex, referenceContext))
     } else if (child.nodeType === Node.TEXT_NODE) {
       const textLine = renderTextNode(child.textContent ?? '', depth + 1, lineCounter.current)
       if (textLine) {
@@ -153,13 +295,32 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
 
     body.append(errorBox, sample)
 
-    return { element: container }
+    return {
+      element: container,
+      scrollToAnchor() {
+        return false
+      }
+    }
   }
 
   const lineCounter = { current: 1 }
   const root = doc.documentElement
+  const referenceIndex = createReferenceIndex()
+  const referenceContext: ReferenceDetectionContext | undefined =
+    options.path !== undefined
+      ? {
+          sourcePath: options.path,
+          relationshipsBySource: options.relationshipsBySource,
+          onReferenceNavigate: options.onReferenceNavigate
+        }
+      : undefined
 
-  body.appendChild(renderElement(root, 0, lineCounter))
+  body.appendChild(renderElement(root, 0, lineCounter, referenceIndex, referenceContext))
 
-  return { element: container }
+  return {
+    element: container,
+    scrollToAnchor(target: ScrollTarget) {
+      return referenceIndex.scrollTo(target)
+    }
+  }
 }
