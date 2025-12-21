@@ -15,11 +15,10 @@ if (!root) {
 root.innerHTML = `
   <div class="min-h-screen bg-gray-100 text-gray-900" id="drop-zone">
     <header class="bg-white shadow-sm border-b border-gray-200">
-      <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="px-6 py-4 flex items-center justify-between">
         <div>
           <p class="text-xs text-indigo-600 font-semibold uppercase tracking-[0.2em]">Tess</p>
-          <h1 class="text-2xl font-bold text-gray-900">Package explorer</h1>
-          <p class="text-sm text-gray-600 mt-1">Inspect OPC/DOCX structure and XML relationships.</p>
+          <h1 class="text-2xl font-bold text-gray-900" id="header-title">Package explorer</h1>
         </div>
         <div class="text-right">
           <button id="file-picker-btn" class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-md hover:bg-indigo-700 focus:outline focus:outline-2 focus:outline-indigo-500">
@@ -29,11 +28,11 @@ root.innerHTML = `
         </div>
       </div>
     </header>
-    <main class="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-7 gap-6">
+    <main class="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
       <section class="lg:col-span-2 space-y-4" id="file-tree-panel">
         <div id="file-tree"></div>
       </section>
-      <section class="lg:col-span-3 space-y-4" id="tab-panel"></section>
+      <section class="lg:col-span-8 space-y-4" id="tab-panel"></section>
       <aside class="lg:col-span-2 space-y-4" id="context-panel"></aside>
     </main>
   </div>
@@ -43,6 +42,7 @@ root.innerHTML = `
 let currentPackage: PackageModel | null = null
 let fileTree: ReturnType<typeof createFileTree> | null = null
 let contextPanel: ReturnType<typeof createContextPanel> | null = null
+let currentFileName: string | null = null
 
 const treeMount = document.querySelector<HTMLDivElement>('#file-tree')
 const tabPanel = document.querySelector<HTMLDivElement>('#tab-panel')
@@ -50,6 +50,7 @@ const contextPanelMount = document.querySelector<HTMLDivElement>('#context-panel
 const dropZone = document.querySelector<HTMLDivElement>('#drop-zone')
 const fileInput = document.querySelector<HTMLInputElement>('#file-input')
 const filePickerBtn = document.querySelector<HTMLButtonElement>('#file-picker-btn')
+const headerTitle = document.querySelector<HTMLHeadingElement>('#header-title')
 
 const tabs = createTabStore()
 
@@ -77,6 +78,12 @@ async function loadPackage(file: File): Promise<void> {
     // Load the package
     const arrayBuffer = await file.arrayBuffer()
     currentPackage = await loadDocxPackage(arrayBuffer)
+    currentFileName = file.name
+
+    // Update header with file name
+    if (headerTitle) {
+      headerTitle.textContent = currentFileName
+    }
 
     // Clear existing tabs
     tabs.closeAll()
@@ -118,7 +125,7 @@ appEvents.addEventListener(FILE_OPENED, (event) => {
 
 // Setup tab view
 if (tabPanel) {
-  const tabView = createTabView({ store: tabs, sideBySide: true })
+  const tabView = createTabView({ store: tabs, sideBySide: false })
   tabPanel.appendChild(tabView.element)
 }
 
