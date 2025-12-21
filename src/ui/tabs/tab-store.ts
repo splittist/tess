@@ -7,6 +7,7 @@ export interface TabRecord extends FileEventDetail {
 export interface TabStoreHandle {
   open(detail: FileEventDetail, content?: string): void
   close(path: string): void
+  closeAll(): void
   focus(path: string): void
   subscribe(listener: (state: TabStoreState) => void): () => void
   getState(): TabStoreState
@@ -49,6 +50,11 @@ export function createTabStore(): TabStoreHandle {
     notify()
   }
 
+  function closeAll(): void {
+    state = { tabs: [], activePath: null }
+    notify()
+  }
+
   function focus(path: string): void {
     if (state.activePath === path || !state.tabs.find((tab) => tab.path === path)) return
     state = { ...state, activePath: path }
@@ -64,6 +70,7 @@ export function createTabStore(): TabStoreHandle {
   return {
     open,
     close,
+    closeAll,
     focus,
     subscribe,
     getState() {

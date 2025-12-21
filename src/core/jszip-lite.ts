@@ -2,7 +2,6 @@ const textDecoder = new TextDecoder()
 
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
-const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50
 
 type ZipLikeInput = ArrayBuffer | ArrayBufferView | Uint8Array | Blob
 
@@ -62,7 +61,7 @@ function parseDosDateTime(date: number, time: number): Date {
 
 async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream !== 'undefined' && typeof Blob !== 'undefined' && typeof Blob.prototype.stream === 'function') {
-    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+    const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
     const reader = stream.getReader()
     const chunks: Uint8Array[] = []
     let total = 0
@@ -179,7 +178,7 @@ export class JSZipObject {
 
   async async(type: 'arraybuffer' | 'uint8array' | 'string' | 'text'): Promise<ArrayBuffer | Uint8Array | string> {
     if (type === 'arraybuffer') {
-      return this._data.buffer.slice(this._data.byteOffset, this._data.byteOffset + this._data.byteLength)
+      return this._data.buffer.slice(this._data.byteOffset, this._data.byteOffset + this._data.byteLength) as ArrayBuffer
     }
 
     if (type === 'uint8array') {
