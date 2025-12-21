@@ -70,7 +70,7 @@ async function loadPackage(file: File): Promise<void> {
   try {
     // Validate file type
     if (!file.name.toLowerCase().endsWith('.docx')) {
-      alert('Please select a .docx file')
+      alert('Please use a .docx file')
       return
     }
 
@@ -102,14 +102,15 @@ async function loadPackage(file: File): Promise<void> {
     }
   } catch (error) {
     console.error('Failed to load package:', error)
-    alert('Failed to load the DOCX file. Please ensure it is a valid DOCX file.')
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    alert(`Failed to load the DOCX file: ${errorMessage}\n\nPlease ensure it is a valid DOCX file.`)
   }
 }
 
 // Handle file opened events
 appEvents.addEventListener(FILE_OPENED, (event) => {
   const detail = (event as CustomEvent<FileEventDetail>).detail
-  if (!tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
+  if (!currentPackage || !tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
     const file = currentPackage?.byPath[detail.path]
     tabs.open(detail, file?.text)
   }
