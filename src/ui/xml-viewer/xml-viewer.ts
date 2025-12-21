@@ -120,7 +120,7 @@ function renderElement(
 
   if (hasChildren) {
     toggle.addEventListener('click', () => {
-      const collapsed = !childrenWrapper.classList.toggle('hidden')
+      const collapsed = childrenWrapper.classList.toggle('hidden')
       closeLine.classList.toggle('hidden', collapsed)
       toggle.textContent = collapsed ? '▸' : '▾'
       toggle.title = collapsed ? 'Expand element' : 'Collapse element'
