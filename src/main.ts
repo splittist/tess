@@ -2,6 +2,8 @@ import './style.css'
 import { PackageFile, PackageFileMetadata, PackageModel } from './core/zip-loader'
 import { FILE_OPENED, FileEventDetail, IMAGE_PREVIEW_REQUESTED, appEvents } from './ui/events'
 import { createFileTree } from './ui/file-tree/file-tree'
+import { createTabStore } from './ui/tabs/tab-store'
+import { createTabView } from './ui/tabs/tab-view'
 
 const root = document.querySelector<HTMLDivElement>('#app')
 
@@ -24,21 +26,9 @@ root.innerHTML = `
         </div>
       </div>
     </header>
-    <main class="max-w-6xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-      <section class="md:col-span-1" id="file-tree-panel">
+    <main class="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-6 gap-6">
+      <section class="lg:col-span-2 space-y-4" id="file-tree-panel">
         <div id="file-tree"></div>
-      </section>
-      <section class="md:col-span-2 space-y-4">
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
-          <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700">Open tabs</h2>
-              <p class="text-xs text-gray-500">Click XML or binary files to open/focus tabs.</p>
-            </div>
-            <span id="tab-count" class="text-xs text-gray-500"></span>
-          </div>
-          <div id="tab-list" class="p-4 space-y-3"></div>
-        </div>
         <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
           <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <div>
@@ -49,6 +39,7 @@ root.innerHTML = `
           <div id="image-preview" class="p-4 text-sm text-gray-700"></div>
         </div>
       </section>
+      <section class="lg:col-span-4 space-y-4" id="tab-panel"></section>
     </main>
   </div>
 `
@@ -110,71 +101,10 @@ if (treeMount) {
   treeMount.appendChild(fileTree.element)
 }
 
-const tabList = document.querySelector<HTMLDivElement>('#tab-list')
-const tabCount = document.querySelector<HTMLSpanElement>('#tab-count')
+const tabPanel = document.querySelector<HTMLDivElement>('#tab-panel')
 const imagePreview = document.querySelector<HTMLDivElement>('#image-preview')
 
-const openTabs: FileEventDetail[] = []
-let activeTab: FileEventDetail | null = null
-
-function setActiveTab(path: string): void {
-  const match = openTabs.find((tab) => tab.path === path)
-  activeTab = match ?? activeTab
-  renderTabs()
-}
-
-function renderTabs(): void {
-  if (!tabList || !tabCount) return
-  tabList.innerHTML = ''
-
-  if (openTabs.length === 0) {
-    tabCount.textContent = 'No tabs open'
-    renderEmptyMessage(tabList, 'Select an XML or binary entry to open it in a tab.')
-    return
-  }
-
-  tabCount.textContent = `${openTabs.length} tab${openTabs.length === 1 ? '' : 's'}`
-
-  const tabButtons = document.createElement('div')
-  tabButtons.className = 'flex flex-wrap gap-2'
-
-  openTabs.forEach((tab) => {
-    const btn = document.createElement('button')
-    const isActive = activeTab?.path === tab.path
-    btn.type = 'button'
-    btn.className = `px-3 py-1 rounded-full text-xs font-semibold border transition ${
-      isActive
-        ? 'bg-indigo-600 text-white border-indigo-600'
-        : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
-    }`
-    btn.textContent = tab.name
-    btn.addEventListener('click', () => setActiveTab(tab.path))
-    tabButtons.appendChild(btn)
-  })
-
-  tabList.appendChild(tabButtons)
-
-  const activeDetail = document.createElement('div')
-  activeDetail.className = 'mt-3 p-3 border border-dashed border-gray-200 rounded-lg bg-gray-50'
-  if (activeTab) {
-    const title = document.createElement('p')
-    title.className = 'font-semibold text-sm text-gray-800'
-    title.textContent = activeTab.name
-
-    const meta = document.createElement('p')
-    meta.className = 'text-xs text-gray-600'
-    meta.textContent = `${activeTab.kind.toUpperCase()} • ${activeTab.path}`
-
-    activeDetail.append(title, meta)
-  } else {
-    const message = document.createElement('p')
-    message.className = 'text-sm text-gray-600'
-    message.textContent = 'Select a tab to focus it.'
-    activeDetail.appendChild(message)
-  }
-
-  tabList.appendChild(activeDetail)
-}
+const tabs = createTabStore()
 
 function renderImagePreview(detail?: FileEventDetail): void {
   if (!imagePreview) return
@@ -204,9 +134,8 @@ function renderImagePreview(detail?: FileEventDetail): void {
 appEvents.addEventListener(FILE_OPENED, (event) => {
   const detail = (event as CustomEvent<FileEventDetail>).detail
   if (!openTabs.find((tab) => tab.path === detail.path)) {
-    openTabs.push(detail)
-  }
-  setActiveTab(detail.path)
+  const file = demoPackage.byPath[detail.path]
+  tabs.open(detail, file?.text)
 })
 
 appEvents.addEventListener(IMAGE_PREVIEW_REQUESTED, (event) => {
@@ -214,5 +143,9 @@ appEvents.addEventListener(IMAGE_PREVIEW_REQUESTED, (event) => {
   renderImagePreview(detail)
 })
 
-renderTabs()
+if (tabPanel) {
+  const tabView = createTabView({ store: tabs, sideBySide: true })
+  tabPanel.appendChild(tabView.element)
+}
+
 renderImagePreview()
