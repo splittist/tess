@@ -133,9 +133,10 @@ function renderImagePreview(detail?: FileEventDetail): void {
 
 appEvents.addEventListener(FILE_OPENED, (event) => {
   const detail = (event as CustomEvent<FileEventDetail>).detail
-  if (!openTabs.find((tab) => tab.path === detail.path)) {
-  const file = demoPackage.byPath[detail.path]
-  tabs.open(detail, file?.text)
+  if (!tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
+    const file = demoPackage.byPath[detail.path]
+    tabs.open(detail, file?.text)
+  }
 })
 
 appEvents.addEventListener(IMAGE_PREVIEW_REQUESTED, (event) => {
