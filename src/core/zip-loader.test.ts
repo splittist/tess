@@ -17,6 +17,7 @@ describe('zip-loader', () => {
 
     expect(pkg.relationships['_rels/.rels'].rId1.target).toBe('word/document.xml')
     expect(pkg.relationships['word/_rels/document.xml.rels'].rId5.target).toBe('media/image1.bin')
+    expect(pkg.relationshipsBySource['word/document.xml'].rId5.resolvedTarget).toBe('word/media/image1.bin')
 
     const image = pkg.byPath['word/media/image1.bin']
     expect(image.metadata.isXml).toBe(false)

@@ -1,9 +1,13 @@
+import { RelationshipsBySource } from '../../core/relationships'
+import { ReferenceNavigationDetail } from '../events'
 import { createXmlViewer } from '../xml-viewer/xml-viewer'
 import { TabRecord, TabStoreHandle } from './tab-store'
 
 interface TabViewOptions {
   store: TabStoreHandle
   sideBySide?: boolean
+  relationshipsBySource?: () => RelationshipsBySource | undefined
+  onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
 }
 
 interface TabViewHandle {
@@ -50,7 +54,7 @@ function createTabButton(tab: TabRecord, active: boolean, onFocus: () => void, o
   return button
 }
 
-function createTabContent(tab: TabRecord): HTMLElement {
+function createTabContent(tab: TabRecord, options: TabViewOptions): HTMLElement {
   const panel = document.createElement('div')
   panel.className = 'border border-gray-200 rounded-lg bg-white shadow-inner'
 
@@ -72,7 +76,15 @@ function createTabContent(tab: TabRecord): HTMLElement {
   body.className = 'p-4 bg-slate-50'
 
   if (tab.kind === 'xml' && tab.content) {
-    const viewer = createXmlViewer({ xml: tab.content })
+    const viewer = createXmlViewer({
+      xml: tab.content,
+      path: tab.path,
+      relationshipsBySource: options.relationshipsBySource?.(),
+      onReferenceNavigate: options.onReferenceNavigate
+    })
+    if (tab.scrollTarget) {
+      viewer.scrollToAnchor(tab.scrollTarget)
+    }
     body.appendChild(viewer.element)
   } else {
     const placeholder = document.createElement('div')
@@ -151,7 +163,7 @@ export function createTabView(options: TabViewOptions): TabViewHandle {
 
     const renderTabs = sideBySide ? state.tabs.slice(-2) : [focused]
     for (const tab of renderTabs) {
-      panels.appendChild(createTabContent(tab))
+      panels.appendChild(createTabContent(tab, options))
     }
   })
 

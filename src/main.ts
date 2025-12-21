@@ -1,6 +1,14 @@
 import './style.css'
-import { PackageModel, loadDocxPackage } from './core/zip-loader'
-import { FILE_OPENED, FileEventDetail, appEvents } from './ui/events'
+import { PackageFile, PackageModel, loadDocxPackage } from './core/zip-loader'
+import {
+  FILE_OPENED,
+  FileEventDetail,
+  ReferenceNavigationDetail,
+  ScrollTarget,
+  appEvents,
+  publishReferenceNavigation,
+  REFERENCE_NAVIGATION_REQUESTED
+} from './ui/events'
 import { createFileTree } from './ui/file-tree/file-tree'
 import { createTabStore } from './ui/tabs/tab-store'
 import { createTabView } from './ui/tabs/tab-view'
@@ -53,6 +61,26 @@ const filePickerBtn = document.querySelector<HTMLButtonElement>('#file-picker-bt
 const headerTitle = document.querySelector<HTMLHeadingElement>('#header-title')
 
 const tabs = createTabStore()
+const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'])
+
+function toFileKind(file: PackageFile): 'xml' | 'image' | 'binary' {
+  if (file.metadata.isXml) return 'xml'
+  return imageExtensions.has(file.metadata.extension.toLowerCase()) ? 'image' : 'binary'
+}
+
+function openTabForPath(path: string, scrollTarget?: ScrollTarget): void {
+  if (!currentPackage) return
+  const file = currentPackage.byPath[path]
+  if (!file) return
+
+  const detail: FileEventDetail = {
+    path: file.metadata.path,
+    name: file.metadata.name,
+    kind: toFileKind(file)
+  }
+
+  tabs.open(detail, file.text, scrollTarget)
+}
 
 // Initialize empty state
 function showEmptyState(): void {
@@ -117,15 +145,31 @@ async function loadPackage(file: File): Promise<void> {
 // Handle file opened events
 appEvents.addEventListener(FILE_OPENED, (event) => {
   const detail = (event as CustomEvent<FileEventDetail>).detail
-  if (!currentPackage || !tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
-    const file = currentPackage?.byPath[detail.path]
-    tabs.open(detail, file?.text)
+  if (!currentPackage) return
+  const file = currentPackage.byPath[detail.path]
+  if (!file) return
+
+  const alreadyOpen = tabs.getState().tabs.find((tab) => tab.path === detail.path)
+  if (alreadyOpen) {
+    tabs.focus(detail.path)
+  } else {
+    tabs.open(detail, file.text)
   }
+})
+
+appEvents.addEventListener(REFERENCE_NAVIGATION_REQUESTED, (event) => {
+  const detail = (event as CustomEvent<ReferenceNavigationDetail>).detail
+  openTabForPath(detail.targetPath, detail.scrollTarget)
 })
 
 // Setup tab view
 if (tabPanel) {
-  const tabView = createTabView({ store: tabs, sideBySide: false })
+  const tabView = createTabView({
+    store: tabs,
+    sideBySide: false,
+    relationshipsBySource: () => currentPackage?.relationshipsBySource,
+    onReferenceNavigate: (detail) => publishReferenceNavigation(detail, appEvents)
+  })
   tabPanel.appendChild(tabView.element)
 }
 

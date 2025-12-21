@@ -6,8 +6,20 @@ export interface FileEventDetail {
   kind: FileKind
 }
 
+export interface ScrollTarget {
+  attribute: string
+  value: string
+}
+
+export interface ReferenceNavigationDetail {
+  sourcePath: string
+  targetPath: string
+  scrollTarget?: ScrollTarget
+}
+
 export const FILE_OPENED = 'FILE_OPENED'
 export const IMAGE_PREVIEW_REQUESTED = 'IMAGE_PREVIEW_REQUESTED'
+export const REFERENCE_NAVIGATION_REQUESTED = 'REFERENCE_NAVIGATION_REQUESTED'
 
 /**
  * Shared event target for UI coordination.
@@ -20,4 +32,8 @@ export function publishFileOpened(detail: FileEventDetail, target: EventTarget =
 
 export function publishImagePreview(detail: FileEventDetail, target: EventTarget = appEvents): void {
   target.dispatchEvent(new CustomEvent<FileEventDetail>(IMAGE_PREVIEW_REQUESTED, { detail }))
+}
+
+export function publishReferenceNavigation(detail: ReferenceNavigationDetail, target: EventTarget = appEvents): void {
+  target.dispatchEvent(new CustomEvent<ReferenceNavigationDetail>(REFERENCE_NAVIGATION_REQUESTED, { detail }))
 }

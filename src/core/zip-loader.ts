@@ -1,5 +1,5 @@
 import JSZip from './jszip-lite'
-import { parseRelationships, RelationshipMap } from './relationships'
+import { buildRelationshipsBySource, parseRelationships, RelationshipMap, RelationshipsBySource } from './relationships'
 import { parseXml, ParsedXml } from './xml-parser'
 
 export interface PackageFileMetadata {
@@ -23,6 +23,7 @@ export interface PackageModel {
   byPath: Record<string, PackageFile>
   xmlDocuments: Record<string, ParsedXml>
   relationships: Record<string, RelationshipMap>
+  relationshipsBySource: RelationshipsBySource
 }
 
 const decoder = new TextDecoder()
@@ -86,6 +87,7 @@ export async function loadDocxPackage(input: ArrayBuffer | Uint8Array | Blob): P
   files.sort((a, b) => a.metadata.path.localeCompare(b.metadata.path))
 
   const byPath = Object.fromEntries(files.map((file) => [file.metadata.path, file]))
+  const relationshipsBySource = buildRelationshipsBySource(relationships)
 
-  return { files, byPath, xmlDocuments, relationships }
+  return { files, byPath, xmlDocuments, relationships, relationshipsBySource }
 }
