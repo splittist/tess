@@ -14,20 +14,26 @@ function createToken(text: string, className: string): HTMLSpanElement {
   return span
 }
 
-function createLineRow(content: Node, depth: number, lineNumber: number): HTMLDivElement {
+function createLineRow(content: Node, depth: number, lineNumber: number, toggleButton?: HTMLButtonElement): HTMLDivElement {
   const row = document.createElement('div')
-  row.className = 'grid grid-cols-[auto,1fr] gap-3 items-start'
+  row.className = 'grid grid-cols-[auto,auto,1fr] gap-2 items-start'
 
   const number = document.createElement('span')
   number.className = 'w-12 text-right text-[11px] leading-6 text-gray-400 select-none'
   number.textContent = lineNumber.toString()
 
+  const toggleCell = document.createElement('div')
+  toggleCell.className = 'w-5 flex items-start justify-center'
+  if (toggleButton) {
+    toggleCell.appendChild(toggleButton)
+  }
+
   const code = document.createElement('div')
-  code.className = 'font-mono text-[13px] whitespace-pre leading-6 text-slate-800 overflow-x-auto flex items-start gap-2'
+  code.className = 'font-mono text-[13px] whitespace-pre leading-6 text-slate-800 flex items-start gap-2'
   code.style.paddingLeft = `${depth * 12}px`
   code.appendChild(content)
 
-  row.append(number, code)
+  row.append(number, toggleCell, code)
   return row
 }
 
@@ -67,14 +73,13 @@ function renderElement(
   const hasChildren = Array.from(element.childNodes).some((node) => node.nodeType === Node.ELEMENT_NODE || (node.textContent ?? '').trim())
   const toggle = document.createElement('button')
   toggle.type = 'button'
-  toggle.className = `mr-1 h-5 w-5 rounded border border-gray-200 text-[11px] leading-5 text-gray-600 flex items-center justify-center ${
+  toggle.className = `h-5 w-5 rounded border border-gray-200 text-[11px] leading-5 text-gray-600 flex items-center justify-center ${
     hasChildren ? 'hover:bg-gray-100' : 'opacity-30 pointer-events-none'
   }`
   toggle.textContent = '▾'
   toggle.title = hasChildren ? 'Collapse element' : 'No child nodes'
 
   const openTag = document.createDocumentFragment()
-  openTag.appendChild(toggle)
   openTag.appendChild(createToken('<', 'text-gray-400'))
   openTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
 
@@ -85,7 +90,7 @@ function renderElement(
 
   openTag.appendChild(createToken('>', 'text-gray-400'))
 
-  const openLine = createLineRow(openTag, depth, lineCounter.current++)
+  const openLine = createLineRow(openTag, depth, lineCounter.current++, toggle)
   container.appendChild(openLine)
 
   const childrenWrapper = document.createElement('div')
@@ -128,20 +133,6 @@ function renderElement(
 export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
   const container = document.createElement('div')
   container.className = 'rounded-lg border border-gray-200 bg-slate-50'
-
-  const header = document.createElement('div')
-  header.className = 'px-4 py-2 border-b border-gray-200 flex items-center justify-between'
-
-  const title = document.createElement('p')
-  title.className = 'text-xs font-semibold uppercase tracking-wide text-gray-700'
-  title.textContent = options.title ?? 'XML document'
-
-  const hint = document.createElement('span')
-  hint.className = 'text-[11px] text-gray-500'
-  hint.textContent = 'Line numbers and collapsible nodes'
-
-  header.append(title, hint)
-  container.appendChild(header)
 
   const body = document.createElement('div')
   body.className = 'p-4 overflow-auto max-h-[700px]'
