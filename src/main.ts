@@ -1,5 +1,5 @@
 import './style.css'
-import { PackageFile, PackageFileMetadata, PackageModel } from './core/zip-loader'
+import { PackageModel, loadDocxPackage } from './core/zip-loader'
 import { FILE_OPENED, FileEventDetail, appEvents } from './ui/events'
 import { createFileTree } from './ui/file-tree/file-tree'
 import { createTabStore } from './ui/tabs/tab-store'
@@ -13,7 +13,7 @@ if (!root) {
 }
 
 root.innerHTML = `
-  <div class="min-h-screen bg-gray-100 text-gray-900">
+  <div class="min-h-screen bg-gray-100 text-gray-900" id="drop-zone">
     <header class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <div>
@@ -21,9 +21,11 @@ root.innerHTML = `
           <h1 class="text-2xl font-bold text-gray-900">Package explorer</h1>
           <p class="text-sm text-gray-600 mt-1">Inspect OPC/DOCX structure and XML relationships.</p>
         </div>
-        <div class="text-right text-xs text-gray-500">
-          <p class="font-semibold text-gray-700">Status: Ready</p>
-          <p>Load a package to begin exploring files</p>
+        <div class="text-right">
+          <button id="file-picker-btn" class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-md hover:bg-indigo-700 focus:outline focus:outline-2 focus:outline-indigo-500">
+            Choose File
+          </button>
+          <input type="file" id="file-input" accept=".docx" class="hidden" />
         </div>
       </div>
     </header>
@@ -37,114 +39,126 @@ root.innerHTML = `
   </div>
 `
 
-function base64ToArrayBuffer(data: string): ArrayBuffer {
-  const binary = atob(data)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return bytes.buffer
-}
+// UI state
+let currentPackage: PackageModel | null = null
+let fileTree: ReturnType<typeof createFileTree> | null = null
+let contextPanel: ReturnType<typeof createContextPanel> | null = null
 
-function createPackageFile(path: string, text?: string, arrayBuffer?: ArrayBuffer): PackageFile {
-  const extensionIndex = path.lastIndexOf('.')
-  const extension = extensionIndex >= 0 ? path.slice(extensionIndex).toLowerCase() : ''
-  const lastSlash = path.lastIndexOf('/')
-  const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : ''
-  const metadata: PackageFileMetadata = {
-    path,
-    name: path.split('/').pop() ?? path,
-    folder,
-    extension,
-    isXml: extension === '.xml' || extension === '.rels',
-    size: arrayBuffer?.byteLength ?? text?.length ?? 0
-  }
-
-  return {
-    metadata,
-    arrayBuffer: arrayBuffer ?? new ArrayBuffer(0),
-    text: metadata.isXml ? text ?? '' : undefined
-  }
-}
-
-function createDemoPackage(): PackageModel {
-  const transparentPng =
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII='
-  const tinyJpeg =
-    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAAQABADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAgEAABAwQDAQAAAAAAAAAAAAABAAIDBAUREiExMkFR/8QAFQEBAQAAAAAAAAAAAAAAAAAAAgP/xAAVEQEBAAAAAAAAAAAAAAAAAAAAEf/aAAwDAQACEQMRAD8A04LiXisgIZSZO9Q5q1uQMhV3vNo83j5SiJHFGL8Wl//Z'
-
-  const files: PackageFile[] = [
-    createPackageFile('[Content_Types].xml', '<Types><Default Extension="xml" /></Types>'),
-    createPackageFile('docProps/core.xml', '<cp:coreProperties></cp:coreProperties>'),
-    createPackageFile('word/document.xml', '<w:document><w:body /></w:document>'),
-    createPackageFile('word/styles.xml', '<w:styles></w:styles>'),
-    createPackageFile('word/media/image1.png', undefined, base64ToArrayBuffer(transparentPng)),
-    createPackageFile('word/media/image2.jpeg', undefined, base64ToArrayBuffer(tinyJpeg)),
-    createPackageFile('word/_rels/document.xml.rels', '<Relationships></Relationships>')
-  ]
-
-  const byPath = Object.fromEntries(files.map((file) => [file.metadata.path, file]))
-
-  return {
-    files,
-    byPath,
-    xmlDocuments: {},
-    relationships: {}
-  }
-}
-
-const demoPackage = createDemoPackage()
 const treeMount = document.querySelector<HTMLDivElement>('#file-tree')
-if (treeMount) {
-  const fileTree = createFileTree({ model: demoPackage, eventTarget: appEvents })
-  treeMount.appendChild(fileTree.element)
-}
-
 const tabPanel = document.querySelector<HTMLDivElement>('#tab-panel')
 const contextPanelMount = document.querySelector<HTMLDivElement>('#context-panel')
+const dropZone = document.querySelector<HTMLDivElement>('#drop-zone')
+const fileInput = document.querySelector<HTMLInputElement>('#file-input')
+const filePickerBtn = document.querySelector<HTMLButtonElement>('#file-picker-btn')
 
 const tabs = createTabStore()
 
-appEvents.addEventListener(FILE_OPENED, (event) => {
-  const detail = (event as CustomEvent<FileEventDetail>).detail
-  const { tabs: openTabs } = tabs.getState()
-  const existing = openTabs.find((tab) => tab.path === detail.path)
-
-  if (existing) {
-    tabs.focus(detail.path)
-    return
+// Initialize empty state
+function showEmptyState(): void {
+  if (treeMount) {
+    treeMount.innerHTML = `
+      <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-8 text-center">
+        <p class="text-sm font-semibold text-gray-700 mb-2">No package loaded</p>
+        <p class="text-xs text-gray-500">Drag and drop a .docx file or click "Choose File"</p>
+      </div>
+    `
   }
-
-  const title = document.createElement('p')
-  title.className = 'font-semibold text-sm text-gray-800'
-  title.textContent = detail.name
-
-  const meta = document.createElement('p')
-  meta.className = 'text-xs text-gray-600 mt-1'
-  meta.textContent = `Image preview requested for ${detail.path}`
-
-  const placeholder = document.createElement('div')
-  placeholder.className =
-    'mt-3 h-36 rounded-lg border border-dashed border-gray-300 bg-gradient-to-br from-indigo-50 to-blue-50 flex items-center justify-center text-sm text-gray-500'
-  placeholder.textContent = 'Preview will render here once available.'
-
-  imagePreview.append(title, meta, placeholder)
 }
 
+// Load a package
+async function loadPackage(file: File): Promise<void> {
+  try {
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      alert('Please use a .docx file')
+      return
+    }
+
+    // Load the package
+    const arrayBuffer = await file.arrayBuffer()
+    currentPackage = await loadDocxPackage(arrayBuffer)
+
+    // Clear existing tabs
+    tabs.closeAll()
+
+    // Update file tree
+    if (treeMount) {
+      if (fileTree) {
+        fileTree.update(currentPackage)
+      } else {
+        treeMount.innerHTML = ''
+        fileTree = createFileTree({ model: currentPackage, eventTarget: appEvents })
+        treeMount.appendChild(fileTree.element)
+      }
+    }
+
+    // Update context panel
+    if (contextPanelMount && currentPackage) {
+      if (contextPanel) {
+        contextPanelMount.innerHTML = ''
+      }
+      contextPanel = createContextPanel({ model: currentPackage, eventTarget: appEvents })
+      contextPanelMount.appendChild(contextPanel.element)
+    }
+  } catch (error) {
+    console.error('Failed to load package:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    alert(`Failed to load the DOCX file: ${errorMessage}\n\nPlease ensure it is a valid DOCX file.`)
+  }
+}
+
+// Handle file opened events
 appEvents.addEventListener(FILE_OPENED, (event) => {
   const detail = (event as CustomEvent<FileEventDetail>).detail
-  if (!tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
-    const file = demoPackage.byPath[detail.path]
+  if (!currentPackage || !tabs.getState().tabs.find((tab) => tab.path === detail.path)) {
+    const file = currentPackage?.byPath[detail.path]
     tabs.open(detail, file?.text)
   }
 })
 
+// Setup tab view
 if (tabPanel) {
   const tabView = createTabView({ store: tabs, sideBySide: true })
   tabPanel.appendChild(tabView.element)
 }
 
-if (contextPanelMount) {
-  const contextPanel = createContextPanel({ model: demoPackage, eventTarget: appEvents })
-  contextPanelMount.appendChild(contextPanel.element)
+// Setup drag and drop
+if (dropZone) {
+  dropZone.addEventListener('dragover', (event) => {
+    event.preventDefault()
+    dropZone.classList.add('bg-indigo-50')
+  })
+
+  dropZone.addEventListener('dragleave', (event) => {
+    event.preventDefault()
+    dropZone.classList.remove('bg-indigo-50')
+  })
+
+  dropZone.addEventListener('drop', async (event) => {
+    event.preventDefault()
+    dropZone.classList.remove('bg-indigo-50')
+
+    const files = event.dataTransfer?.files
+    if (files && files.length > 0) {
+      await loadPackage(files[0])
+    }
+  })
 }
+
+// Setup file picker
+if (filePickerBtn && fileInput) {
+  filePickerBtn.addEventListener('click', () => {
+    fileInput.click()
+  })
+
+  fileInput.addEventListener('change', async () => {
+    const files = fileInput.files
+    if (files && files.length > 0) {
+      await loadPackage(files[0])
+      fileInput.value = '' // Reset input
+    }
+  })
+}
+
+// Show initial empty state
+showEmptyState()
