@@ -7,8 +7,11 @@ export interface FileEventDetail {
 }
 
 export interface ScrollTarget {
-  attribute: string
-  value: string
+  attribute?: string
+  value?: string
+  lineNumber?: number
+  searchQuery?: string
+  lineText?: string
 }
 
 export interface ReferenceNavigationDetail {

@@ -53,6 +53,8 @@ function createReferenceIndex(): ReferenceIndex {
   }
 
   function scrollTo(target: ScrollTarget): boolean {
+    if (!target.attribute || !target.value) return false
+
     const anchor = anchors.get(anchorKey(target.attribute, target.value))
     if (!anchor) return false
 
@@ -213,6 +215,10 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
   code.style.paddingLeft = `${depth * 12}px`
   code.appendChild(content)
 
+  const codeText = code.textContent ?? ''
+  row.dataset.lineNumber = lineNumber.toString()
+  row.dataset.codeText = codeText
+
   row.append(number, toggleCell, code)
   return row
 }
@@ -314,7 +320,8 @@ function renderElement(
   depth: number,
   lineCounter: { current: number },
   referenceIndex: ReferenceIndex,
-  referenceContext?: ReferenceDetectionContext
+  referenceContext: ReferenceDetectionContext | undefined,
+  lineRegistry: Map<number, HTMLDivElement>
 ): HTMLDivElement {
   const container = document.createElement('div')
   container.className = 'space-y-0'
@@ -345,8 +352,10 @@ function renderElement(
 
   openTag.appendChild(createToken('>', 'text-gray-400'))
 
-  const openLine = createLineRow(openTag, depth, lineCounter.current++, toggle)
+  const openLineNumber = lineCounter.current++
+  const openLine = createLineRow(openTag, depth, openLineNumber, toggle)
   container.appendChild(openLine)
+  lineRegistry.set(openLineNumber, openLine)
 
   for (const attr of anchorAttributes) {
     referenceIndex.register(attr.name, attr.value, openLine)
@@ -357,15 +366,22 @@ function renderElement(
 
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
-      childrenWrapper.appendChild(renderElement(child as Element, depth + 1, lineCounter, referenceIndex, referenceContext))
+      childrenWrapper.appendChild(
+        renderElement(child as Element, depth + 1, lineCounter, referenceIndex, referenceContext, lineRegistry)
+      )
     } else if (child.nodeType === Node.TEXT_NODE) {
-      const textLine = renderTextNode(child.textContent ?? '', depth + 1, lineCounter.current)
+      const lineNumber = lineCounter.current
+      const textLine = renderTextNode(child.textContent ?? '', depth + 1, lineNumber)
       if (textLine) {
-        childrenWrapper.appendChild(textLine)
         lineCounter.current += 1
+        childrenWrapper.appendChild(textLine)
+        lineRegistry.set(lineNumber, textLine)
       }
     } else if (child.nodeType === Node.COMMENT_NODE) {
-      childrenWrapper.appendChild(renderCommentNode(child.textContent ?? '', depth + 1, lineCounter.current++))
+      const commentLineNumber = lineCounter.current++
+      const commentLine = renderCommentNode(child.textContent ?? '', depth + 1, commentLineNumber)
+      childrenWrapper.appendChild(commentLine)
+      lineRegistry.set(commentLineNumber, commentLine)
     }
   }
 
@@ -374,8 +390,10 @@ function renderElement(
   closeTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
   closeTag.appendChild(createToken('>', 'text-gray-400'))
 
-  const closeLine = createLineRow(closeTag, depth, lineCounter.current++)
+  const closeLineNumber = lineCounter.current++
+  const closeLine = createLineRow(closeTag, depth, closeLineNumber)
   container.appendChild(closeLine)
+  lineRegistry.set(closeLineNumber, closeLine)
 
   if (hasChildren) {
     toggle.addEventListener('click', () => {
@@ -391,11 +409,43 @@ function renderElement(
 
 export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
   const container = document.createElement('div')
-  container.className = 'rounded-lg border border-gray-200 bg-slate-50'
+  container.className = 'rounded-lg border border-gray-200 bg-white flex flex-col'
+
+  const controls = document.createElement('div')
+  controls.className =
+    'px-4 py-2 border-b border-gray-200 bg-white sticky top-0 z-10 flex items-center gap-2 text-sm'
+
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.className =
+    'flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300'
+  searchInput.placeholder = 'Search in this file'
+
+  const prevBtn = document.createElement('button')
+  prevBtn.type = 'button'
+  prevBtn.className =
+    'px-2 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 disabled:opacity-50'
+  prevBtn.textContent = 'Prev'
+
+  const nextBtn = document.createElement('button')
+  nextBtn.type = 'button'
+  nextBtn.className =
+    'px-2 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gray-700 bg-gray-50 hover:bg-gray-100 disabled:opacity-50'
+  nextBtn.textContent = 'Next'
+
+  const matchStatus = document.createElement('span')
+  matchStatus.className = 'text-xs text-gray-600'
+  matchStatus.textContent = '0 / 0'
+
+  controls.append(searchInput, prevBtn, nextBtn, matchStatus)
+
+  const scrollContainer = document.createElement('div')
+  scrollContainer.className = 'overflow-auto max-h-[700px]'
 
   const body = document.createElement('div')
-  body.className = 'p-4 overflow-auto max-h-[700px]'
-  container.appendChild(body)
+  body.className = 'p-4 bg-slate-50'
+  scrollContainer.appendChild(body)
+  container.append(controls, scrollContainer)
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(options.xml, 'application/xml')
@@ -420,6 +470,7 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
     }
   }
 
+  const lineRegistry = new Map<number, HTMLDivElement>()
   const lineCounter = { current: 1 }
   const root = doc.documentElement
   const referenceIndex = createReferenceIndex()
@@ -433,11 +484,115 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
         }
       : undefined
 
-  body.appendChild(renderElement(root, 0, lineCounter, referenceIndex, referenceContext))
+  body.appendChild(renderElement(root, 0, lineCounter, referenceIndex, referenceContext, lineRegistry))
+
+  let matches: { lineNumber: number; element: HTMLDivElement }[] = []
+  let activeMatchIndex = -1
+
+  function clearMatchStyles(): void {
+    for (const element of lineRegistry.values()) {
+      element.classList.remove('bg-amber-50', 'ring-2', 'ring-amber-500')
+    }
+  }
+
+  function updateNavigationState(): void {
+    const total = matches.length
+    const current = activeMatchIndex >= 0 ? activeMatchIndex + 1 : 0
+    matchStatus.textContent = `${current} / ${total}`
+    prevBtn.disabled = total === 0
+    nextBtn.disabled = total === 0
+  }
+
+  function focusMatch(index: number): void {
+    if (matches.length === 0) {
+      activeMatchIndex = -1
+      updateNavigationState()
+      return
+    }
+
+    activeMatchIndex = ((index % matches.length) + matches.length) % matches.length
+    clearMatchStyles()
+
+    matches.forEach((match) => match.element.classList.add('bg-amber-50'))
+
+    const active = matches[activeMatchIndex]
+    active.element.classList.add('ring-2', 'ring-amber-500')
+    active.element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+
+    updateNavigationState()
+  }
+
+  function runLocalSearch(query: string): void {
+    const normalizedQuery = query.trim().toLowerCase()
+    matches = []
+    activeMatchIndex = -1
+    clearMatchStyles()
+
+    if (!normalizedQuery) {
+      updateNavigationState()
+      return
+    }
+
+    const lines = Array.from(lineRegistry.entries()).sort((a, b) => a[0] - b[0])
+    for (const [lineNumber, element] of lines) {
+      const text = (element.dataset.codeText ?? '').toLowerCase()
+      let index = text.indexOf(normalizedQuery)
+      while (index !== -1) {
+        matches.push({ lineNumber, element })
+        index = text.indexOf(normalizedQuery, index + normalizedQuery.length || index + 1)
+      }
+    }
+
+    focusMatch(0)
+  }
+
+  function scrollToLine(target: ScrollTarget): boolean {
+    const exact = target.lineNumber !== undefined ? lineRegistry.get(target.lineNumber) : undefined
+    if (exact) {
+      exact.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      exact.classList.add('bg-amber-50')
+      setTimeout(() => exact.classList.remove('bg-amber-50'), 1200)
+      return true
+    }
+
+    const searchText = target.lineText ?? target.searchQuery
+    if (searchText) {
+      const match = Array.from(lineRegistry.values()).find((line) =>
+        (line.dataset.codeText ?? '').toLowerCase().includes(searchText.toLowerCase())
+      )
+      if (match) {
+        match.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        match.classList.add('bg-amber-50')
+        setTimeout(() => match.classList.remove('bg-amber-50'), 1200)
+        return true
+      }
+    }
+
+    return false
+  }
+
+  prevBtn.addEventListener('click', () => focusMatch(activeMatchIndex - 1))
+  nextBtn.addEventListener('click', () => focusMatch(activeMatchIndex + 1))
+  searchInput.addEventListener('input', () => runLocalSearch(searchInput.value))
+  updateNavigationState()
 
   return {
     element: container,
     scrollToAnchor(target: ScrollTarget) {
+      if (target.searchQuery) {
+        searchInput.value = target.searchQuery
+        runLocalSearch(target.searchQuery)
+        const targetIndex = target.lineNumber
+          ? matches.findIndex((match) => match.lineNumber === target.lineNumber)
+          : 0
+        focusMatch(targetIndex >= 0 ? targetIndex : 0)
+        return matches.length > 0
+      }
+
+      if (target.lineNumber !== undefined || target.lineText) {
+        return scrollToLine(target)
+      }
+
       return referenceIndex.scrollTo(target)
     }
   }
