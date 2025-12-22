@@ -220,7 +220,7 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
   }
 
   const code = document.createElement('div')
-  code.className = 'font-mono text-[13px] whitespace-pre-wrap leading-6 text-slate-800 flex items-start gap-2'
+  code.className = 'font-mono text-[13px] whitespace-pre-wrap leading-6 text-slate-800 flex flex-wrap items-start gap-2'
   code.style.paddingLeft = `${depth * 12}px`
   code.appendChild(content)
 

@@ -38,6 +38,22 @@ describe('xml-viewer', () => {
       expect(hasPreWrap).toBe(true)
     })
 
+    it('should enable line wrapping for elements with multiple attributes', () => {
+      const xml = '<root foo="bar" baz="qux" lorem="ipsum" dolor="sit" amet="consectetur"><child>content</child></root>'
+      const viewer = createXmlViewer({ xml })
+      document.body.appendChild(viewer.element)
+
+      // Find code elements that contain the XML content
+      const codeElements = viewer.element.querySelectorAll('.font-mono')
+      expect(codeElements.length).toBeGreaterThan(0)
+
+      // Verify that flex-wrap is applied to allow attributes to wrap
+      const hasFlexWrap = Array.from(codeElements).some((element) =>
+        element.classList.contains('flex-wrap')
+      )
+      expect(hasFlexWrap).toBe(true)
+    })
+
     describe('collapse/expand functionality', () => {
       let viewer: ReturnType<typeof createXmlViewer>
       
