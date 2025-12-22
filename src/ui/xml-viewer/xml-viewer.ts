@@ -1,11 +1,13 @@
 import { RelationshipsBySource } from '../../core/relationships'
 import { ReferenceNavigationDetail, ScrollTarget } from '../events'
+import { ReferenceMapHandle } from '../../core/reference-map'
 
 interface XmlViewerOptions {
   xml: string
   title?: string
   path?: string
   relationshipsBySource?: RelationshipsBySource
+  referenceMap?: ReferenceMapHandle
   onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
 }
 
@@ -24,6 +26,7 @@ function createToken(text: string, className: string): HTMLSpanElement {
 interface ReferenceDetectionContext {
   sourcePath?: string
   relationshipsBySource?: RelationshipsBySource
+  referenceMap?: ReferenceMapHandle
   onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
 }
 
@@ -107,8 +110,88 @@ function resolveCommentReference(attribute: Attr, element: Element, context: Ref
   }
 }
 
+function resolveNoteReference(
+  noteType: 'footnote' | 'endnote',
+  attribute: Attr,
+  element: Element,
+  context: ReferenceDetectionContext
+): AttributeReference | null {
+  if (context.sourcePath === undefined || !context.relationshipsBySource) return null
+
+  const tagName = element.tagName.toLowerCase()
+  const attrName = attribute.name.toLowerCase()
+  const value = attribute.value
+
+  const isNoteReference = tagName.includes(noteType) && attrName.endsWith('id') && /^\d+$/.test(value)
+  if (!isNoteReference) return null
+
+  const relationships = context.relationshipsBySource[context.sourcePath]
+  const noteRelationship = Object.values(relationships ?? {}).find((rel) =>
+    (rel.type ?? '').toLowerCase().includes(`/${noteType}s`)
+  )
+
+  if (!noteRelationship) return null
+
+  return {
+    targetPath: noteRelationship.resolvedTarget,
+    label: `${noteType} ${value}`,
+    scrollTarget: { attribute: attribute.name, value }
+  }
+}
+
+function resolveFootnoteReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  return resolveNoteReference('footnote', attribute, element, context)
+}
+
+function resolveEndnoteReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  return resolveNoteReference('endnote', attribute, element, context)
+}
+
+function resolveBookmarkReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  if (context.sourcePath === undefined) return null
+
+  const tagName = element.tagName.toLowerCase()
+  const attrName = attribute.name.toLowerCase()
+  const value = attribute.value
+
+  // Bookmark references use w:anchor attribute in hyperlink tags
+  const isBookmarkReference = tagName.includes('hyperlink') && attrName.endsWith('anchor')
+  if (!isBookmarkReference) return null
+
+  // Bookmarks are typically in the same document
+  return {
+    targetPath: context.sourcePath,
+    label: `bookmark ${value}`,
+    scrollTarget: { attribute: 'name', value }
+  }
+}
+
 function detectReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
-  return resolveRelationshipReference(attribute, context) ?? resolveCommentReference(attribute, element, context)
+  return (
+    resolveRelationshipReference(attribute, context) ??
+    resolveCommentReference(attribute, element, context) ??
+    resolveFootnoteReference(attribute, element, context) ??
+    resolveEndnoteReference(attribute, element, context) ??
+    resolveBookmarkReference(attribute, element, context)
+  )
+}
+
+function registerReferenceInMap(
+  attribute: Attr,
+  reference: AttributeReference,
+  context: ReferenceDetectionContext
+): void {
+  if (!context.referenceMap || !context.sourcePath) return
+
+  context.referenceMap.addReference({
+    sourcePath: context.sourcePath,
+    sourceAttribute: attribute.name,
+    sourceValue: attribute.value,
+    targetPath: reference.targetPath,
+    targetAttribute: reference.scrollTarget?.attribute ?? 'id',
+    targetValue: reference.scrollTarget?.value ?? attribute.value,
+    label: reference.label
+  })
 }
 
 function createLineRow(content: Node, depth: number, lineNumber: number, toggleButton?: HTMLButtonElement): HTMLDivElement {
@@ -152,16 +235,50 @@ function createAttributeTokens(attribute: Attr, element: Element, referenceConte
   frag.appendChild(createToken(attribute.name, 'text-amber-700'))
   frag.appendChild(createToken('=', 'text-gray-400'))
 
-  const reference = referenceContext ? detectReference(attribute, element, referenceContext) : null
-  if (reference && reference.targetPath) {
+  // Check for forward references (this attribute references something else)
+  const forwardReference = referenceContext ? detectReference(attribute, element, referenceContext) : null
+  
+  // Register the forward reference in the map
+  if (forwardReference && referenceContext) {
+    registerReferenceInMap(attribute, forwardReference, referenceContext)
+  }
+
+  // Check for reverse references (this attribute is referenced by something else)
+  const reverseReferences =
+    referenceContext?.referenceMap && referenceContext.sourcePath
+      ? referenceContext.referenceMap.getReferencesTo(referenceContext.sourcePath, attribute.name, attribute.value)
+      : []
+
+  // If we have a forward reference OR reverse references, make it clickable
+  if (forwardReference && forwardReference.targetPath) {
     const button = createReferenceButton(`"${attribute.value}"`, () => {
       referenceContext?.onReferenceNavigate?.({
         sourcePath: referenceContext.sourcePath ?? '',
-        targetPath: reference.targetPath,
-        scrollTarget: reference.scrollTarget
+        targetPath: forwardReference.targetPath,
+        scrollTarget: forwardReference.scrollTarget
       })
     })
-    button.title = `Open ${reference.label}`
+    button.title = `Open ${forwardReference.label}`
+    frag.appendChild(button)
+  } else if (reverseReferences.length > 0) {
+    // This is a target that is referenced from elsewhere
+    const firstRef = reverseReferences[0]
+    const label = reverseReferences.length === 1 
+      ? `"${attribute.value}" (← ${firstRef.label ?? firstRef.sourcePath})`
+      : `"${attribute.value}" (← ${reverseReferences.length} references)`
+    
+    const button = createReferenceButton(label, () => {
+      // Navigate back to the first reference source
+      referenceContext?.onReferenceNavigate?.({
+        sourcePath: referenceContext.sourcePath ?? '',
+        targetPath: firstRef.sourcePath,
+        scrollTarget: { attribute: firstRef.sourceAttribute, value: firstRef.sourceValue }
+      })
+    })
+    button.title = reverseReferences.length === 1
+      ? `Go to reference in ${firstRef.sourcePath}`
+      : `Go to reference (${reverseReferences.length} total)`
+    button.className = 'text-blue-700 underline decoration-dotted underline-offset-4 hover:text-blue-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 rounded px-0.5'
     frag.appendChild(button)
   } else {
     frag.appendChild(createToken(`"${attribute.value}"`, 'text-emerald-700'))
@@ -311,6 +428,7 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
       ? {
           sourcePath: options.path,
           relationshipsBySource: options.relationshipsBySource,
+          referenceMap: options.referenceMap,
           onReferenceNavigate: options.onReferenceNavigate
         }
       : undefined

@@ -1,5 +1,6 @@
 import './style.css'
 import { PackageFile, PackageModel, loadDocxPackage } from './core/zip-loader'
+import { createReferenceMap } from './core/reference-map'
 import {
   FILE_OPENED,
   FileEventDetail,
@@ -51,6 +52,8 @@ let currentPackage: PackageModel | null = null
 let fileTree: ReturnType<typeof createFileTree> | null = null
 let contextPanel: ReturnType<typeof createContextPanel> | null = null
 let currentFileName: string | null = null
+
+const referenceMap = createReferenceMap()
 
 const treeMount = document.querySelector<HTMLDivElement>('#file-tree')
 const tabPanel = document.querySelector<HTMLDivElement>('#tab-panel')
@@ -116,6 +119,9 @@ async function loadPackage(file: File): Promise<void> {
     // Clear existing tabs
     tabs.closeAll()
 
+    // Clear reference map
+    referenceMap.clear()
+
     // Update file tree
     if (treeMount) {
       if (fileTree) {
@@ -168,6 +174,7 @@ if (tabPanel) {
     store: tabs,
     sideBySide: false,
     relationshipsBySource: () => currentPackage?.relationshipsBySource,
+    referenceMap: () => referenceMap,
     onReferenceNavigate: (detail) => publishReferenceNavigation(detail, appEvents)
   })
   tabPanel.appendChild(tabView.element)
