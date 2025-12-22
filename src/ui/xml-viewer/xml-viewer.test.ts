@@ -22,6 +22,22 @@ describe('xml-viewer', () => {
       expect(viewer.element.textContent).toContain('Parse error')
     })
 
+    it('should apply whitespace-pre-wrap to enable line wrapping with preserved indentation', () => {
+      const xml = '<root attribute="very long attribute value that should wrap when displayed in the viewer"><child>content</child></root>'
+      const viewer = createXmlViewer({ xml })
+      document.body.appendChild(viewer.element)
+
+      // Find code elements that contain the XML content
+      const codeElements = viewer.element.querySelectorAll('.font-mono')
+      expect(codeElements.length).toBeGreaterThan(0)
+
+      // Verify that at least one has whitespace-pre-wrap class
+      const hasPreWrap = Array.from(codeElements).some((element) =>
+        element.classList.contains('whitespace-pre-wrap')
+      )
+      expect(hasPreWrap).toBe(true)
+    })
+
     describe('collapse/expand functionality', () => {
       let viewer: ReturnType<typeof createXmlViewer>
       
