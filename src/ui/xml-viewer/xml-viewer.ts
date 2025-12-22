@@ -222,8 +222,8 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
 
   const code = document.createElement('div')
   code.className = 'font-mono text-[13px] leading-5 text-slate-800'
-  code.style.paddingLeft = `${depth * 12 + 36}px`  // base depth + indent for wrapped attributes
-  code.style.textIndent = '-36px'  // hanging indent to pull first line back
+  code.style.paddingLeft = `${depth * 12}px`
+  code.style.marginLeft = '54px'  // Indent for wrapped lines
   code.appendChild(content)
 
   const codeText = code.textContent ?? ''
@@ -371,7 +371,9 @@ function renderElement(
   toggle.title = hasChildren ? 'Collapse element' : 'No child nodes'
 
   const openTag = document.createDocumentFragment()
-  openTag.appendChild(createToken('<', 'text-gray-400'))
+  const openBracket = createToken('<', 'text-gray-400')
+  openBracket.style.marginLeft = '-54px'  // Pull first line back to align with base indentation
+  openTag.appendChild(openBracket)
   openTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
 
   const anchorAttributes: Attr[] = []

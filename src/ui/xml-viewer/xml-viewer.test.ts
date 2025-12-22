@@ -31,11 +31,11 @@ describe('xml-viewer', () => {
       const codeElements = viewer.element.querySelectorAll('.font-mono')
       expect(codeElements.length).toBeGreaterThan(0)
 
-      // Verify that text-indent is applied for hanging indent
-      const hasTextIndent = Array.from(codeElements).some((element) =>
-        (element as HTMLElement).style.textIndent === '-36px'
+      // Verify that marginLeft is applied for continuation line indent
+      const hasMarginLeft = Array.from(codeElements).some((element) =>
+        (element as HTMLElement).style.marginLeft === '54px'
       )
-      expect(hasTextIndent).toBe(true)
+      expect(hasMarginLeft).toBe(true)
     })
 
     it('should keep attributes together when wrapping', () => {
