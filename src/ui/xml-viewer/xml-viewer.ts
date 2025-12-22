@@ -110,52 +110,41 @@ function resolveCommentReference(attribute: Attr, element: Element, context: Ref
   }
 }
 
-function resolveFootnoteReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+function resolveNoteReference(
+  noteType: 'footnote' | 'endnote',
+  attribute: Attr,
+  element: Element,
+  context: ReferenceDetectionContext
+): AttributeReference | null {
   if (context.sourcePath === undefined || !context.relationshipsBySource) return null
 
   const tagName = element.tagName.toLowerCase()
   const attrName = attribute.name.toLowerCase()
   const value = attribute.value
 
-  const isFootnoteReference = tagName.includes('footnote') && attrName.endsWith('id') && /^\d+$/.test(value)
-  if (!isFootnoteReference) return null
+  const isNoteReference = tagName.includes(noteType) && attrName.endsWith('id') && /^\d+$/.test(value)
+  if (!isNoteReference) return null
 
   const relationships = context.relationshipsBySource[context.sourcePath]
-  const footnoteRelationship = Object.values(relationships ?? {}).find((rel) =>
-    (rel.type ?? '').toLowerCase().includes('/footnotes')
+  const noteRelationship = Object.values(relationships ?? {}).find((rel) =>
+    (rel.type ?? '').toLowerCase().includes(`/${noteType}s`)
   )
 
-  if (!footnoteRelationship) return null
+  if (!noteRelationship) return null
 
   return {
-    targetPath: footnoteRelationship.resolvedTarget,
-    label: `footnote ${value}`,
+    targetPath: noteRelationship.resolvedTarget,
+    label: `${noteType} ${value}`,
     scrollTarget: { attribute: attribute.name, value }
   }
 }
 
+function resolveFootnoteReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
+  return resolveNoteReference('footnote', attribute, element, context)
+}
+
 function resolveEndnoteReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
-  if (context.sourcePath === undefined || !context.relationshipsBySource) return null
-
-  const tagName = element.tagName.toLowerCase()
-  const attrName = attribute.name.toLowerCase()
-  const value = attribute.value
-
-  const isEndnoteReference = tagName.includes('endnote') && attrName.endsWith('id') && /^\d+$/.test(value)
-  if (!isEndnoteReference) return null
-
-  const relationships = context.relationshipsBySource[context.sourcePath]
-  const endnoteRelationship = Object.values(relationships ?? {}).find((rel) =>
-    (rel.type ?? '').toLowerCase().includes('/endnotes')
-  )
-
-  if (!endnoteRelationship) return null
-
-  return {
-    targetPath: endnoteRelationship.resolvedTarget,
-    label: `endnote ${value}`,
-    scrollTarget: { attribute: attribute.name, value }
-  }
+  return resolveNoteReference('endnote', attribute, element, context)
 }
 
 function resolveBookmarkReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
@@ -176,7 +165,6 @@ function resolveBookmarkReference(attribute: Attr, element: Element, context: Re
     scrollTarget: { attribute: 'name', value }
   }
 }
-
 
 function detectReference(attribute: Attr, element: Element, context: ReferenceDetectionContext): AttributeReference | null {
   return (

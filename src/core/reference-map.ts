@@ -61,23 +61,27 @@ export function createReferenceMap(): ReferenceMapHandle {
     const targetKey = createReferenceKey(link.targetPath, link.targetAttribute, link.targetValue)
 
     // Add to forward map
-    const targets = forwardMap.get(sourceKey) ?? []
-    targets.push({
-      targetPath: link.targetPath,
-      targetAttribute: link.targetAttribute,
-      targetValue: link.targetValue
-    })
-    forwardMap.set(sourceKey, targets)
+    const existingTargets = forwardMap.get(sourceKey) ?? []
+    forwardMap.set(sourceKey, [
+      ...existingTargets,
+      {
+        targetPath: link.targetPath,
+        targetAttribute: link.targetAttribute,
+        targetValue: link.targetValue
+      }
+    ])
 
     // Add to reverse map
-    const sources = reverseMap.get(targetKey) ?? []
-    sources.push({
-      sourcePath: link.sourcePath,
-      sourceAttribute: link.sourceAttribute,
-      sourceValue: link.sourceValue,
-      label: link.label
-    })
-    reverseMap.set(targetKey, sources)
+    const existingSources = reverseMap.get(targetKey) ?? []
+    reverseMap.set(targetKey, [
+      ...existingSources,
+      {
+        sourcePath: link.sourcePath,
+        sourceAttribute: link.sourceAttribute,
+        sourceValue: link.sourceValue,
+        label: link.label
+      }
+    ])
   }
 
   function getReferencesFrom(path: string, attribute: string, value: string): ReferenceTarget[] {
