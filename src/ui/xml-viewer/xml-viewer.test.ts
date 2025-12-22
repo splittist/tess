@@ -43,13 +43,13 @@ describe('xml-viewer', () => {
       const viewer = createXmlViewer({ xml })
       document.body.appendChild(viewer.element)
 
-      // Find attribute containers - they should have inline-block display to prevent breaking
+      // Find attribute containers - they should have inline-block class to prevent breaking
       const attributeContainers = viewer.element.querySelectorAll('.whitespace-nowrap')
       expect(attributeContainers.length).toBeGreaterThan(0)
 
-      // Verify they have inline-block display
+      // Verify they have inline-block class
       const hasInlineBlock = Array.from(attributeContainers).some((element) =>
-        (element as HTMLElement).style.display === 'inline-block'
+        element.classList.contains('inline-block')
       )
       expect(hasInlineBlock).toBe(true)
     })

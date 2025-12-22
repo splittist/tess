@@ -17,10 +17,11 @@ interface XmlViewerHandle {
   scrollToAnchor(target: ScrollTarget): boolean
 }
 
+const CONTINUATION_INDENT_PX = 54 // Indentation for wrapped attribute lines (approx 9 characters)
+
 function createToken(text: string, className: string): HTMLSpanElement {
   const span = document.createElement('span')
   span.className = className
-  span.style.display = 'inline'  // Use inline display for natural text wrapping
   span.textContent = text
   return span
 }
@@ -223,7 +224,7 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
   const code = document.createElement('div')
   code.className = 'font-mono text-[13px] leading-5 text-slate-800'
   code.style.paddingLeft = `${depth * 12}px`
-  code.style.marginLeft = '54px'  // Indent for wrapped lines
+  code.style.marginLeft = `${CONTINUATION_INDENT_PX}px`  // Indent for wrapped lines
   code.appendChild(content)
 
   const codeText = code.textContent ?? ''
@@ -250,8 +251,7 @@ function createReferenceButton(label: string, onClick: () => void): HTMLButtonEl
 function createAttributeTokens(attribute: Attr, element: Element, referenceContext?: ReferenceDetectionContext): HTMLSpanElement {
   // Wrap the entire attribute in a container to prevent breaking mid-attribute
   const container = document.createElement('span')
-  container.className = 'whitespace-nowrap'
-  container.style.display = 'inline-block'  // Allow wrapping between attributes, not within
+  container.className = 'inline-block whitespace-nowrap'
   
   container.appendChild(createToken(attribute.name, 'text-amber-700'))
   container.appendChild(createToken(' = ', 'text-gray-400'))
@@ -372,7 +372,7 @@ function renderElement(
 
   const openTag = document.createDocumentFragment()
   const openBracket = createToken('<', 'text-gray-400')
-  openBracket.style.marginLeft = '-54px'  // Pull first line back to align with base indentation
+  openBracket.style.marginLeft = `-${CONTINUATION_INDENT_PX}px`  // Pull first line back to align with base indentation
   openTag.appendChild(openBracket)
   openTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
 
