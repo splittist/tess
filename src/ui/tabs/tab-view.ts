@@ -1,4 +1,5 @@
 import { RelationshipsBySource } from '../../core/relationships'
+import { ReferenceMapHandle } from '../../core/reference-map'
 import { ReferenceNavigationDetail } from '../events'
 import { createXmlViewer } from '../xml-viewer/xml-viewer'
 import { TabRecord, TabStoreHandle } from './tab-store'
@@ -7,6 +8,7 @@ interface TabViewOptions {
   store: TabStoreHandle
   sideBySide?: boolean
   relationshipsBySource?: () => RelationshipsBySource | undefined
+  referenceMap?: () => ReferenceMapHandle | undefined
   onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
 }
 
@@ -80,6 +82,7 @@ function createTabContent(tab: TabRecord, options: TabViewOptions): HTMLElement 
       xml: tab.content,
       path: tab.path,
       relationshipsBySource: options.relationshipsBySource?.(),
+      referenceMap: options.referenceMap?.(),
       onReferenceNavigate: options.onReferenceNavigate
     })
     if (tab.scrollTarget) {
