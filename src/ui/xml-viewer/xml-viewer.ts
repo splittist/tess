@@ -1,6 +1,7 @@
 import { RelationshipsBySource } from '../../core/relationships'
 import { ReferenceNavigationDetail, ScrollTarget } from '../events'
 import { ReferenceMapHandle } from '../../core/reference-map'
+import { DEFAULT_NAMESPACE_LABEL, applyOverlayStyles, describeTag, TagMetadata } from '../../utils/highlighting'
 
 interface XmlViewerOptions {
   xml: string
@@ -21,6 +22,14 @@ function createToken(text: string, className: string): HTMLSpanElement {
   span.className = className
   span.textContent = text
   return span
+}
+
+function annotateLine(row: HTMLDivElement, metadata?: TagMetadata | null): void {
+  if (!metadata) return
+
+  row.dataset.tagName = metadata.tagName
+  row.dataset.namespace = metadata.namespace
+  row.dataset.elementType = metadata.localName
 }
 
 interface ReferenceDetectionContext {
@@ -293,21 +302,35 @@ function createAttributeTokens(attribute: Attr, element: Element, referenceConte
   return frag
 }
 
-function renderTextNode(text: string, depth: number, lineNumber: number): HTMLDivElement | null {
+function renderTextNode(
+  text: string,
+  depth: number,
+  lineNumber: number,
+  tagMetadata?: TagMetadata | null
+): HTMLDivElement | null {
   const trimmed = text.trim()
   if (!trimmed) return null
 
   const frag = document.createDocumentFragment()
   frag.appendChild(createToken(trimmed, 'text-slate-700'))
-  return createLineRow(frag, depth, lineNumber)
+  const line = createLineRow(frag, depth, lineNumber)
+  annotateLine(line, tagMetadata)
+  return line
 }
 
-function renderCommentNode(text: string, depth: number, lineNumber: number): HTMLDivElement {
+function renderCommentNode(
+  text: string,
+  depth: number,
+  lineNumber: number,
+  tagMetadata?: TagMetadata | null
+): HTMLDivElement {
   const frag = document.createDocumentFragment()
   frag.appendChild(createToken('<!--', 'text-gray-400'))
   frag.appendChild(createToken(text, 'text-slate-500'))
   frag.appendChild(createToken('-->', 'text-gray-400'))
-  return createLineRow(frag, depth, lineNumber)
+  const line = createLineRow(frag, depth, lineNumber)
+  annotateLine(line, tagMetadata)
+  return line
 }
 
 function isAnchorAttribute(attribute: Attr): boolean {
@@ -321,10 +344,16 @@ function renderElement(
   lineCounter: { current: number },
   referenceIndex: ReferenceIndex,
   referenceContext: ReferenceDetectionContext | undefined,
-  lineRegistry: Map<number, HTMLDivElement>
+  lineRegistry: Map<number, HTMLDivElement>,
+  namespaceSet: Set<string>,
+  elementNames: Set<string>
 ): HTMLDivElement {
   const container = document.createElement('div')
   container.className = 'space-y-0'
+
+  const tagMetadata = describeTag(element.tagName)
+  namespaceSet.add(tagMetadata.namespace)
+  elementNames.add(tagMetadata.localName)
 
   const hasChildren = Array.from(element.childNodes).some((node) => node.nodeType === Node.ELEMENT_NODE || (node.textContent ?? '').trim())
   const toggle = document.createElement('button')
@@ -354,6 +383,7 @@ function renderElement(
 
   const openLineNumber = lineCounter.current++
   const openLine = createLineRow(openTag, depth, openLineNumber, toggle)
+  annotateLine(openLine, tagMetadata)
   container.appendChild(openLine)
   lineRegistry.set(openLineNumber, openLine)
 
@@ -367,11 +397,20 @@ function renderElement(
   for (const child of Array.from(element.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
       childrenWrapper.appendChild(
-        renderElement(child as Element, depth + 1, lineCounter, referenceIndex, referenceContext, lineRegistry)
+        renderElement(
+          child as Element,
+          depth + 1,
+          lineCounter,
+          referenceIndex,
+          referenceContext,
+          lineRegistry,
+          namespaceSet,
+          elementNames
+        )
       )
     } else if (child.nodeType === Node.TEXT_NODE) {
       const lineNumber = lineCounter.current
-      const textLine = renderTextNode(child.textContent ?? '', depth + 1, lineNumber)
+      const textLine = renderTextNode(child.textContent ?? '', depth + 1, lineNumber, tagMetadata)
       if (textLine) {
         lineCounter.current += 1
         childrenWrapper.appendChild(textLine)
@@ -379,7 +418,7 @@ function renderElement(
       }
     } else if (child.nodeType === Node.COMMENT_NODE) {
       const commentLineNumber = lineCounter.current++
-      const commentLine = renderCommentNode(child.textContent ?? '', depth + 1, commentLineNumber)
+      const commentLine = renderCommentNode(child.textContent ?? '', depth + 1, commentLineNumber, tagMetadata)
       childrenWrapper.appendChild(commentLine)
       lineRegistry.set(commentLineNumber, commentLine)
     }
@@ -392,6 +431,7 @@ function renderElement(
 
   const closeLineNumber = lineCounter.current++
   const closeLine = createLineRow(closeTag, depth, closeLineNumber)
+  annotateLine(closeLine, tagMetadata)
   container.appendChild(closeLine)
   lineRegistry.set(closeLineNumber, closeLine)
 
@@ -413,8 +453,10 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
 
   const controls = document.createElement('div')
   controls.className =
-    'px-4 py-2 border-b border-gray-200 bg-white sticky top-0 z-10 flex items-center gap-2 text-sm'
+    'px-4 py-2 border-b border-gray-200 bg-white sticky top-0 z-10 flex flex-col gap-2 text-sm'
 
+  const searchRow = document.createElement('div')
+  searchRow.className = 'w-full flex flex-wrap items-center gap-2'
   const searchInput = document.createElement('input')
   searchInput.type = 'search'
   searchInput.className =
@@ -437,7 +479,46 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
   matchStatus.className = 'text-xs text-gray-600'
   matchStatus.textContent = '0 / 0'
 
-  controls.append(searchInput, prevBtn, nextBtn, matchStatus)
+  searchRow.append(searchInput, prevBtn, nextBtn, matchStatus)
+
+  const overlayRow = document.createElement('div')
+  overlayRow.className = 'w-full flex flex-wrap items-center gap-2 text-xs text-gray-700'
+
+  const namespaceSelect = document.createElement('select')
+  namespaceSelect.className =
+    'rounded-md border border-gray-200 bg-white px-2 py-1 text-xs min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300'
+  namespaceSelect.innerHTML = '<option value=\"\">All namespaces</option>'
+  namespaceSelect.title = 'Focus on a specific namespace prefix'
+
+  const dimNamespaceLabel = document.createElement('label')
+  dimNamespaceLabel.className = 'inline-flex items-center gap-1'
+  const dimNamespaceToggle = document.createElement('input')
+  dimNamespaceToggle.type = 'checkbox'
+  dimNamespaceToggle.className = 'rounded border-gray-300'
+  dimNamespaceToggle.disabled = true
+  const dimNamespaceText = document.createElement('span')
+  dimNamespaceText.textContent = 'Dim others'
+  dimNamespaceLabel.append(dimNamespaceToggle, dimNamespaceText)
+
+  const elementSelect = document.createElement('select')
+  elementSelect.className =
+    'rounded-md border border-gray-200 bg-white px-2 py-1 text-xs min-w-[180px] focus:outline-none focus:ring-2 focus:ring-indigo-300'
+  elementSelect.innerHTML = '<option value=\"\">Highlight element type</option>'
+  elementSelect.title = 'Highlight all instances of a tag'
+
+  const stackingLabel = document.createElement('label')
+  stackingLabel.className = 'inline-flex items-center gap-1'
+  const stackingToggle = document.createElement('input')
+  stackingToggle.type = 'checkbox'
+  stackingToggle.className = 'rounded border-gray-300'
+  stackingToggle.checked = true
+  const stackingText = document.createElement('span')
+  stackingText.textContent = 'Combine overlays'
+  stackingLabel.append(stackingToggle, stackingText)
+
+  overlayRow.append(namespaceSelect, dimNamespaceLabel, elementSelect, stackingLabel)
+
+  controls.append(searchRow, overlayRow)
 
   const scrollContainer = document.createElement('div')
   scrollContainer.className = 'overflow-auto max-h-[700px]'
@@ -470,6 +551,8 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
     }
   }
 
+  const namespaces = new Set<string>()
+  const elementNames = new Set<string>()
   const lineRegistry = new Map<number, HTMLDivElement>()
   const lineCounter = { current: 1 }
   const root = doc.documentElement
@@ -484,7 +567,113 @@ export function createXmlViewer(options: XmlViewerOptions): XmlViewerHandle {
         }
       : undefined
 
-  body.appendChild(renderElement(root, 0, lineCounter, referenceIndex, referenceContext, lineRegistry))
+  body.appendChild(
+    renderElement(
+      root,
+      0,
+      lineCounter,
+      referenceIndex,
+      referenceContext,
+      lineRegistry,
+      namespaces,
+      elementNames
+    )
+  )
+
+  const overlayState = {
+    focusNamespace: null as string | null,
+    highlightElement: null as string | null,
+    dimOtherNamespaces: false,
+    allowCombination: true
+  }
+
+  function refreshOverlayOptions(): void {
+    const currentNamespace = namespaceSelect.value
+    const currentElement = elementSelect.value
+
+    namespaceSelect.innerHTML = ''
+    const namespaceDefault = document.createElement('option')
+    namespaceDefault.value = ''
+    namespaceDefault.textContent = 'All namespaces'
+    namespaceSelect.appendChild(namespaceDefault)
+
+    for (const ns of Array.from(namespaces).sort((a, b) => a.localeCompare(b))) {
+      const option = document.createElement('option')
+      option.value = ns
+      option.textContent = ns === DEFAULT_NAMESPACE_LABEL ? `${ns}` : ns
+      namespaceSelect.appendChild(option)
+    }
+
+    if (currentNamespace && namespaces.has(currentNamespace)) {
+      namespaceSelect.value = currentNamespace
+    }
+
+    elementSelect.innerHTML = ''
+    const elementDefault = document.createElement('option')
+    elementDefault.value = ''
+    elementDefault.textContent = 'Highlight element type'
+    elementSelect.appendChild(elementDefault)
+
+    for (const elementName of Array.from(elementNames).sort((a, b) => a.localeCompare(b))) {
+      const option = document.createElement('option')
+      option.value = elementName
+      option.textContent = elementName
+      elementSelect.appendChild(option)
+    }
+
+    if (currentElement && elementNames.has(currentElement)) {
+      elementSelect.value = currentElement
+    }
+
+    dimNamespaceToggle.disabled = !namespaceSelect.value
+  }
+
+  const updateOverlayStyles = (): void => {
+    applyOverlayStyles(lineRegistry.values(), overlayState)
+  }
+
+  namespaceSelect.addEventListener('change', () => {
+    overlayState.focusNamespace = namespaceSelect.value || null
+    if (!overlayState.allowCombination && overlayState.focusNamespace) {
+      overlayState.highlightElement = null
+      elementSelect.value = ''
+    }
+    if (!overlayState.focusNamespace) {
+      overlayState.dimOtherNamespaces = false
+      dimNamespaceToggle.checked = false
+    }
+    dimNamespaceToggle.disabled = !overlayState.focusNamespace
+    updateOverlayStyles()
+  })
+
+  dimNamespaceToggle.addEventListener('change', () => {
+    overlayState.dimOtherNamespaces = dimNamespaceToggle.checked
+    updateOverlayStyles()
+  })
+
+  elementSelect.addEventListener('change', () => {
+    overlayState.highlightElement = elementSelect.value || null
+    if (!overlayState.allowCombination && overlayState.highlightElement) {
+      overlayState.focusNamespace = null
+      namespaceSelect.value = ''
+      overlayState.dimOtherNamespaces = false
+      dimNamespaceToggle.checked = false
+      dimNamespaceToggle.disabled = true
+    }
+    updateOverlayStyles()
+  })
+
+  stackingToggle.addEventListener('change', () => {
+    overlayState.allowCombination = stackingToggle.checked
+    if (!overlayState.allowCombination && overlayState.focusNamespace && overlayState.highlightElement) {
+      overlayState.highlightElement = null
+      elementSelect.value = ''
+    }
+    updateOverlayStyles()
+  })
+
+  refreshOverlayOptions()
+  updateOverlayStyles()
 
   let matches: { lineNumber: number; element: HTMLDivElement }[] = []
   let activeMatchIndex = -1
