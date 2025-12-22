@@ -1,6 +1,8 @@
 import { RelationshipsBySource } from '../../core/relationships'
 import { ReferenceMapHandle } from '../../core/reference-map'
-import { ReferenceNavigationDetail } from '../events'
+import { PackageModel } from '../../core/zip-loader'
+import { searchPackageEntries } from '../../utils/search'
+import { FileEventDetail, FileKind, ReferenceNavigationDetail } from '../events'
 import { createXmlViewer } from '../xml-viewer/xml-viewer'
 import { TabRecord, TabStoreHandle } from './tab-store'
 
@@ -10,11 +12,19 @@ interface TabViewOptions {
   relationshipsBySource?: () => RelationshipsBySource | undefined
   referenceMap?: () => ReferenceMapHandle | undefined
   onReferenceNavigate?: (detail: ReferenceNavigationDetail) => void
+  packageModel?: () => PackageModel | null
 }
 
 interface TabViewHandle {
   element: HTMLElement
   destroy(): void
+}
+
+const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'])
+
+function resolveFileKind(isXml: boolean, extension: string): FileKind {
+  if (isXml) return 'xml'
+  return imageExtensions.has(extension.toLowerCase()) ? 'image' : 'binary'
 }
 
 function createTabButton(tab: TabRecord, active: boolean, onFocus: () => void, onClose: () => void): HTMLElement {
@@ -54,6 +64,37 @@ function createTabButton(tab: TabRecord, active: boolean, onFocus: () => void, o
   button.addEventListener('click', onFocus)
   button.append(label, kind, close)
   return button
+}
+
+function highlightSnippet(snippet: string, query: string): HTMLElement {
+  const wrapper = document.createElement('span')
+  const lowerSnippet = snippet.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+
+  let cursor = 0
+  let index = lowerSnippet.indexOf(lowerQuery)
+
+  while (index !== -1) {
+    const prefix = snippet.slice(cursor, index)
+    if (prefix) {
+      wrapper.append(document.createTextNode(prefix))
+    }
+
+    const match = document.createElement('mark')
+    match.className = 'bg-amber-100 text-amber-900 rounded px-0.5'
+    match.textContent = snippet.slice(index, index + query.length)
+    wrapper.append(match)
+
+    cursor = index + query.length
+    index = lowerSnippet.indexOf(lowerQuery, cursor)
+  }
+
+  const suffix = snippet.slice(cursor)
+  if (suffix) {
+    wrapper.append(document.createTextNode(suffix))
+  }
+
+  return wrapper
 }
 
 function createTabContent(tab: TabRecord, options: TabViewOptions): HTMLElement {
@@ -128,6 +169,35 @@ export function createTabView(options: TabViewOptions): TabViewHandle {
 
   header.append(title, count)
 
+  const searchPanel = document.createElement('div')
+  searchPanel.className = 'px-4 py-3 border-y border-gray-200 bg-slate-50 space-y-2'
+
+  const searchForm = document.createElement('form')
+  searchForm.className = 'flex items-center gap-2'
+
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.placeholder = 'Search across package entries'
+  searchInput.className =
+    'flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300'
+
+  const searchButton = document.createElement('button')
+  searchButton.type = 'submit'
+  searchButton.className =
+    'px-3 py-2 text-sm font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  searchButton.textContent = 'Search'
+
+  searchForm.append(searchInput, searchButton)
+
+  const searchStatus = document.createElement('p')
+  searchStatus.className = 'text-xs text-gray-600'
+  searchStatus.textContent = 'Run a global search to find paths, line numbers, and snippets.'
+
+  const searchResults = document.createElement('div')
+  searchResults.className = 'max-h-56 overflow-auto space-y-1'
+
+  searchPanel.append(searchForm, searchStatus, searchResults)
+
   const tabsBar = document.createElement('div')
   tabsBar.className = 'px-4 py-2 flex flex-wrap gap-2 border-b border-gray-100 bg-gray-50'
 
@@ -136,7 +206,79 @@ export function createTabView(options: TabViewOptions): TabViewHandle {
     ? 'grid grid-cols-1 xl:grid-cols-2 gap-4 p-4 bg-slate-100'
     : 'p-4 bg-slate-100 space-y-4'
 
-  container.append(header, tabsBar, panels)
+  container.append(header, searchPanel, tabsBar, panels)
+
+  function renderGlobalSearch(query: string): void {
+    const model = options.packageModel?.()
+    const trimmed = query.trim()
+
+    searchResults.innerHTML = ''
+
+    if (!model) {
+      searchStatus.textContent = 'Load a package to search across entries.'
+      return
+    }
+
+    if (!trimmed) {
+      searchStatus.textContent = 'Enter a query to search all package entries.'
+      return
+    }
+
+    const results = searchPackageEntries(model, trimmed, { maxResults: 200 })
+    searchStatus.textContent = results.length
+      ? `${results.length} match${results.length === 1 ? '' : 'es'} found`
+      : `No matches found for "${trimmed}".`
+
+    for (const result of results) {
+      const row = document.createElement('button')
+      row.type = 'button'
+      row.className =
+        'w-full text-left rounded-md border border-gray-200 bg-white px-3 py-2 shadow-sm hover:border-indigo-200 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400 space-y-1'
+
+      const headingRow = document.createElement('div')
+      headingRow.className = 'flex items-center justify-between gap-2'
+
+      const path = document.createElement('p')
+      path.className = 'text-sm font-semibold text-gray-800 truncate'
+      path.textContent = result.path
+
+      const line = document.createElement('span')
+      line.className = 'text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full px-2 py-0.5'
+      line.textContent = `Line ${result.lineNumber}`
+
+      headingRow.append(path, line)
+
+      const snippet = document.createElement('p')
+      snippet.className = 'text-xs text-gray-700 font-mono break-all'
+      snippet.append(highlightSnippet(result.snippet, trimmed))
+
+      row.append(headingRow, snippet)
+
+      row.addEventListener('click', () => {
+        const file = model.byPath[result.path]
+        if (!file || !file.text) return
+
+        const detail: FileEventDetail = {
+          path: file.metadata.path,
+          name: file.metadata.name,
+          kind: resolveFileKind(file.metadata.isXml, file.metadata.extension)
+        }
+
+        store.open(detail, file.text, {
+          lineNumber: result.lineNumber,
+          searchQuery: trimmed,
+          lineText: result.line
+        })
+      })
+
+      searchResults.appendChild(row)
+    }
+  }
+
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault()
+    renderGlobalSearch(searchInput.value)
+  })
 
   const unsubscribe = store.subscribe((state) => {
     tabsBar.innerHTML = ''

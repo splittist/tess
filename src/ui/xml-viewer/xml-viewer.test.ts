@@ -32,14 +32,11 @@ describe('xml-viewer', () => {
       })
 
       it('should have toggle buttons for elements with children', () => {
-        const toggleButtons = viewer.element.querySelectorAll('button')
+        const toggleButtons = viewer.element.querySelectorAll('button[title="Collapse element"]')
         expect(toggleButtons.length).toBeGreaterThan(0)
       })
 
       it('should hide children and closing tag when collapsed', () => {
-        const toggleButton = viewer.element.querySelector('button') as HTMLButtonElement
-        expect(toggleButton).toBeTruthy()
-        
         // Get the element container (has class 'space-y-0')
         const container = viewer.element.querySelector('.space-y-0') as HTMLDivElement
         expect(container).toBeTruthy()
@@ -47,7 +44,10 @@ describe('xml-viewer', () => {
         // The container has 3 children: openLine, childrenWrapper, closeLine
         const children = Array.from(container.children) as HTMLElement[]
         expect(children.length).toBe(3)
-        
+
+        const openLine = children[0] as HTMLDivElement
+        const toggleButton = openLine.querySelector('button') as HTMLButtonElement
+        expect(toggleButton).toBeTruthy()
         const childrenWrapper = children[1] as HTMLDivElement
         const closingLine = children[2] as HTMLDivElement
         
@@ -68,8 +68,9 @@ describe('xml-viewer', () => {
       })
 
       it('should show children and closing tag when expanded after collapse', () => {
-        const toggleButton = viewer.element.querySelector('button') as HTMLButtonElement
         const container = viewer.element.querySelector('.space-y-0') as HTMLDivElement
+        const openLine = container.firstElementChild as HTMLElement
+        const toggleButton = openLine.querySelector('button') as HTMLButtonElement
         const children = Array.from(container.children) as HTMLElement[]
         const childrenWrapper = children[1] as HTMLDivElement
         const closingLine = children[2] as HTMLDivElement
@@ -89,7 +90,8 @@ describe('xml-viewer', () => {
       })
 
       it('should update button title when toggling', () => {
-        const toggleButton = viewer.element.querySelector('button') as HTMLButtonElement
+        const openLine = viewer.element.querySelector('.space-y-0')?.firstElementChild as HTMLElement
+        const toggleButton = openLine.querySelector('button') as HTMLButtonElement
         
         expect(toggleButton.title).toBe('Collapse element')
         

@@ -175,6 +175,7 @@ if (tabPanel) {
     sideBySide: false,
     relationshipsBySource: () => currentPackage?.relationshipsBySource,
     referenceMap: () => referenceMap,
+    packageModel: () => currentPackage,
     onReferenceNavigate: (detail) => publishReferenceNavigation(detail, appEvents)
   })
   tabPanel.appendChild(tabView.element)
