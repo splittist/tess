@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createXmlViewer } from './xml-viewer'
 import { RelationshipsBySource } from '../../core/relationships'
+import { createReferenceMap } from '../../core/reference-map'
 
 describe('xml-viewer', () => {
   describe('createXmlViewer', () => {
@@ -133,12 +134,188 @@ describe('xml-viewer', () => {
       })
     })
 
+    it('detects and navigates comment references', () => {
+      const relationshipsBySource: RelationshipsBySource = {
+        'word/document.xml': {
+          rId1: {
+            id: 'rId1',
+            target: 'comments.xml',
+            resolvedTarget: 'word/comments.xml',
+            source: 'word/_rels/document.xml.rels',
+            type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+          }
+        }
+      }
+
+      const xml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:commentRangeStart w:id="1" /></root>'
+      const onReferenceNavigate = vi.fn()
+      const viewer = createXmlViewer({
+        xml,
+        path: 'word/document.xml',
+        relationshipsBySource,
+        onReferenceNavigate
+      })
+
+      const reference = viewer.element.querySelector('button[title^=\"Open comment\"]') as HTMLButtonElement
+      expect(reference).toBeTruthy()
+      expect(reference.title).toBe('Open comment 1')
+
+      reference.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/document.xml',
+        targetPath: 'word/comments.xml',
+        scrollTarget: { attribute: 'w:id', value: '1' }
+      })
+    })
+
+    it('detects and navigates footnote references', () => {
+      const relationshipsBySource: RelationshipsBySource = {
+        'word/document.xml': {
+          rId1: {
+            id: 'rId1',
+            target: 'footnotes.xml',
+            resolvedTarget: 'word/footnotes.xml',
+            source: 'word/_rels/document.xml.rels',
+            type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes'
+          }
+        }
+      }
+
+      const xml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:footnoteReference w:id="2" /></root>'
+      const onReferenceNavigate = vi.fn()
+      const viewer = createXmlViewer({
+        xml,
+        path: 'word/document.xml',
+        relationshipsBySource,
+        onReferenceNavigate
+      })
+
+      const reference = viewer.element.querySelector('button[title^=\"Open footnote\"]') as HTMLButtonElement
+      expect(reference).toBeTruthy()
+      expect(reference.title).toBe('Open footnote 2')
+
+      reference.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/document.xml',
+        targetPath: 'word/footnotes.xml',
+        scrollTarget: { attribute: 'w:id', value: '2' }
+      })
+    })
+
+    it('detects and navigates endnote references', () => {
+      const relationshipsBySource: RelationshipsBySource = {
+        'word/document.xml': {
+          rId1: {
+            id: 'rId1',
+            target: 'endnotes.xml',
+            resolvedTarget: 'word/endnotes.xml',
+            source: 'word/_rels/document.xml.rels',
+            type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes'
+          }
+        }
+      }
+
+      const xml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:endnoteReference w:id="3" /></root>'
+      const onReferenceNavigate = vi.fn()
+      const viewer = createXmlViewer({
+        xml,
+        path: 'word/document.xml',
+        relationshipsBySource,
+        onReferenceNavigate
+      })
+
+      const reference = viewer.element.querySelector('button[title^=\"Open endnote\"]') as HTMLButtonElement
+      expect(reference).toBeTruthy()
+      expect(reference.title).toBe('Open endnote 3')
+
+      reference.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/document.xml',
+        targetPath: 'word/endnotes.xml',
+        scrollTarget: { attribute: 'w:id', value: '3' }
+      })
+    })
+
+    it('detects and navigates bookmark references', () => {
+      const xml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:hyperlink w:anchor="bookmark1" /></root>'
+      const onReferenceNavigate = vi.fn()
+      const viewer = createXmlViewer({
+        xml,
+        path: 'word/document.xml',
+        onReferenceNavigate
+      })
+
+      const reference = viewer.element.querySelector('button[title^=\"Open bookmark\"]') as HTMLButtonElement
+      expect(reference).toBeTruthy()
+      expect(reference.title).toBe('Open bookmark bookmark1')
+
+      reference.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/document.xml',
+        targetPath: 'word/document.xml',
+        scrollTarget: { attribute: 'name', value: 'bookmark1' }
+      })
+    })
+
     it('scrolls to anchors when requested', () => {
       const xml = '<root id=\"root\"><child id=\"target\">text</child></root>'
       const viewer = createXmlViewer({ xml, path: 'word/document.xml' })
 
       const scrolled = viewer.scrollToAnchor({ attribute: 'id', value: 'target' })
       expect(scrolled).toBe(true)
+    })
+
+    it('supports bidirectional navigation with reference map', () => {
+      const relationshipsBySource: RelationshipsBySource = {
+        'word/document.xml': {
+          rId1: {
+            id: 'rId1',
+            target: 'comments.xml',
+            resolvedTarget: 'word/comments.xml',
+            source: 'word/_rels/document.xml.rels',
+            type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments'
+          }
+        }
+      }
+
+      const refMap = createReferenceMap()
+      const onReferenceNavigate = vi.fn()
+
+      // First, render the source document with a comment reference
+      const sourceXml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:commentRangeStart w:id="1" /></root>'
+      const sourceViewer = createXmlViewer({
+        xml: sourceXml,
+        path: 'word/document.xml',
+        relationshipsBySource,
+        referenceMap: refMap,
+        onReferenceNavigate
+      })
+
+      // Check that the forward reference is clickable
+      const forwardRef = sourceViewer.element.querySelector('button[title^=\"Open comment\"]') as HTMLButtonElement
+      expect(forwardRef).toBeTruthy()
+
+      // Now render the target document
+      const targetXml = '<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="1"><w:p><w:t>Comment text</w:t></w:p></w:comment></root>'
+      const targetViewer = createXmlViewer({
+        xml: targetXml,
+        path: 'word/comments.xml',
+        referenceMap: refMap,
+        onReferenceNavigate
+      })
+
+      // Check that the reverse reference is clickable (target back to source)
+      const reverseRef = targetViewer.element.querySelector('button[class*=\"text-blue-\"]') as HTMLButtonElement
+      expect(reverseRef).toBeTruthy()
+      expect(reverseRef.textContent).toContain('1')
+
+      // Click the reverse reference
+      reverseRef.click()
+      expect(onReferenceNavigate).toHaveBeenCalledWith({
+        sourcePath: 'word/comments.xml',
+        targetPath: 'word/document.xml',
+        scrollTarget: { attribute: 'w:id', value: '1' }
+      })
     })
   })
 })

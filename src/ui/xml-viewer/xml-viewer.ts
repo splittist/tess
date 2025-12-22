@@ -165,8 +165,8 @@ function resolveBookmarkReference(attribute: Attr, element: Element, context: Re
   const attrName = attribute.name.toLowerCase()
   const value = attribute.value
 
-  // Bookmark references use anchor attribute pointing to a bookmark name
-  const isBookmarkReference = tagName.includes('anchor') && attrName === 'anchor'
+  // Bookmark references use w:anchor attribute in hyperlink tags
+  const isBookmarkReference = tagName.includes('hyperlink') && attrName.endsWith('anchor')
   if (!isBookmarkReference) return null
 
   // Bookmarks are typically in the same document
