@@ -22,7 +22,7 @@ describe('xml-viewer', () => {
       expect(viewer.element.textContent).toContain('Parse error')
     })
 
-    it('should apply whitespace-pre-wrap to enable line wrapping with preserved indentation', () => {
+    it('should enable line wrapping with hanging indent', () => {
       const xml = '<root attribute="very long attribute value that should wrap when displayed in the viewer"><child>content</child></root>'
       const viewer = createXmlViewer({ xml })
       document.body.appendChild(viewer.element)
@@ -31,27 +31,27 @@ describe('xml-viewer', () => {
       const codeElements = viewer.element.querySelectorAll('.font-mono')
       expect(codeElements.length).toBeGreaterThan(0)
 
-      // Verify that at least one has whitespace-pre-wrap class
-      const hasPreWrap = Array.from(codeElements).some((element) =>
-        element.classList.contains('whitespace-pre-wrap')
+      // Verify that text-indent is applied for hanging indent
+      const hasTextIndent = Array.from(codeElements).some((element) =>
+        (element as HTMLElement).style.textIndent === '-36px'
       )
-      expect(hasPreWrap).toBe(true)
+      expect(hasTextIndent).toBe(true)
     })
 
-    it('should enable line wrapping for elements with multiple attributes', () => {
+    it('should keep attributes together when wrapping', () => {
       const xml = '<root foo="bar" baz="qux" lorem="ipsum" dolor="sit" amet="consectetur"><child>content</child></root>'
       const viewer = createXmlViewer({ xml })
       document.body.appendChild(viewer.element)
 
-      // Find code elements that contain the XML content
-      const codeElements = viewer.element.querySelectorAll('.font-mono')
-      expect(codeElements.length).toBeGreaterThan(0)
+      // Find attribute containers - they should have inline-block display to prevent breaking
+      const attributeContainers = viewer.element.querySelectorAll('.whitespace-nowrap')
+      expect(attributeContainers.length).toBeGreaterThan(0)
 
-      // Verify that flex-wrap is applied to allow attributes to wrap
-      const hasFlexWrap = Array.from(codeElements).some((element) =>
-        element.classList.contains('flex-wrap')
+      // Verify they have inline-block display
+      const hasInlineBlock = Array.from(attributeContainers).some((element) =>
+        (element as HTMLElement).style.display === 'inline-block'
       )
-      expect(hasFlexWrap).toBe(true)
+      expect(hasInlineBlock).toBe(true)
     })
 
     describe('collapse/expand functionality', () => {

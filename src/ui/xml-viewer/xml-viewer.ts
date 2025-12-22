@@ -20,6 +20,7 @@ interface XmlViewerHandle {
 function createToken(text: string, className: string): HTMLSpanElement {
   const span = document.createElement('span')
   span.className = className
+  span.style.display = 'inline'  // Use inline display for natural text wrapping
   span.textContent = text
   return span
 }
@@ -220,8 +221,9 @@ function createLineRow(content: Node, depth: number, lineNumber: number, toggleB
   }
 
   const code = document.createElement('div')
-  code.className = 'font-mono text-[13px] whitespace-pre-wrap leading-6 text-slate-800 flex flex-wrap items-start gap-2'
-  code.style.paddingLeft = `${depth * 12}px`
+  code.className = 'font-mono text-[13px] leading-5 text-slate-800'
+  code.style.paddingLeft = `${depth * 12 + 36}px`  // base depth + indent for wrapped attributes
+  code.style.textIndent = '-36px'  // hanging indent to pull first line back
   code.appendChild(content)
 
   const codeText = code.textContent ?? ''
@@ -245,10 +247,14 @@ function createReferenceButton(label: string, onClick: () => void): HTMLButtonEl
   return button
 }
 
-function createAttributeTokens(attribute: Attr, element: Element, referenceContext?: ReferenceDetectionContext): DocumentFragment {
-  const frag = document.createDocumentFragment()
-  frag.appendChild(createToken(attribute.name, 'text-amber-700'))
-  frag.appendChild(createToken('=', 'text-gray-400'))
+function createAttributeTokens(attribute: Attr, element: Element, referenceContext?: ReferenceDetectionContext): HTMLSpanElement {
+  // Wrap the entire attribute in a container to prevent breaking mid-attribute
+  const container = document.createElement('span')
+  container.className = 'whitespace-nowrap'
+  container.style.display = 'inline-block'  // Allow wrapping between attributes, not within
+  
+  container.appendChild(createToken(attribute.name, 'text-amber-700'))
+  container.appendChild(createToken(' = ', 'text-gray-400'))
 
   // Check for forward references (this attribute references something else)
   const forwardReference = referenceContext ? detectReference(attribute, element, referenceContext) : null
@@ -274,7 +280,7 @@ function createAttributeTokens(attribute: Attr, element: Element, referenceConte
       })
     })
     button.title = `Open ${forwardReference.label}`
-    frag.appendChild(button)
+    container.appendChild(button)
   } else if (reverseReferences.length > 0) {
     // This is a target that is referenced from elsewhere
     const firstRef = reverseReferences[0]
@@ -294,12 +300,12 @@ function createAttributeTokens(attribute: Attr, element: Element, referenceConte
       ? `Go to reference in ${firstRef.sourcePath}`
       : `Go to reference (${reverseReferences.length} total)`
     button.className = 'text-blue-700 underline decoration-dotted underline-offset-4 hover:text-blue-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 rounded px-0.5'
-    frag.appendChild(button)
+    container.appendChild(button)
   } else {
-    frag.appendChild(createToken(`"${attribute.value}"`, 'text-emerald-700'))
+    container.appendChild(createToken(`"${attribute.value}"`, 'text-emerald-700'))
   }
 
-  return frag
+  return container
 }
 
 function renderTextNode(
