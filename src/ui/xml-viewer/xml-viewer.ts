@@ -26,12 +26,16 @@ function createToken(text: string, className: string): HTMLSpanElement {
   return span
 }
 
-function annotateLine(row: HTMLDivElement, metadata?: TagMetadata | null): void {
+function annotateLine(row: HTMLDivElement, metadata?: TagMetadata | null, attributeNamespaces?: string[]): void {
   if (!metadata) return
 
   row.dataset.tagName = metadata.tagName
   row.dataset.namespace = metadata.namespace
   row.dataset.elementType = metadata.localName
+  
+  if (attributeNamespaces && attributeNamespaces.length > 0) {
+    row.dataset.attributeNamespaces = attributeNamespaces.join(',')
+  }
 }
 
 interface ReferenceDetectionContext {
@@ -377,6 +381,7 @@ function renderElement(
   openTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
 
   const anchorAttributes: Attr[] = []
+  const attributeNamespaces: string[] = []
 
   for (const attr of Array.from(element.attributes)) {
     openTag.appendChild(document.createTextNode(' '))
@@ -385,13 +390,20 @@ function renderElement(
     if (isAnchorAttribute(attr)) {
       anchorAttributes.push(attr)
     }
+    
+    // Track namespace from attribute name
+    const attrMetadata = describeTag(attr.name)
+    if (attrMetadata.namespace !== DEFAULT_NAMESPACE_LABEL && !attributeNamespaces.includes(attrMetadata.namespace)) {
+      attributeNamespaces.push(attrMetadata.namespace)
+      namespaceSet.add(attrMetadata.namespace)
+    }
   }
 
   openTag.appendChild(createToken('>', 'text-gray-400'))
 
   const openLineNumber = lineCounter.current++
   const openLine = createLineRow(openTag, depth, openLineNumber, toggle)
-  annotateLine(openLine, tagMetadata)
+  annotateLine(openLine, tagMetadata, attributeNamespaces)
   container.appendChild(openLine)
   lineRegistry.set(openLineNumber, openLine)
 
