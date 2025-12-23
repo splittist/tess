@@ -54,6 +54,39 @@ describe('xml-viewer', () => {
       expect(hasInlineBlock).toBe(true)
     })
 
+    it('should align closing tags with opening tags', () => {
+      const xml = '<root attribute1="value1" attribute2="value2"><child>content</child></root>'
+      const viewer = createXmlViewer({ xml })
+      document.body.appendChild(viewer.element)
+
+      // Find all tokens (opening and closing brackets)
+      const allSpans = viewer.element.querySelectorAll('.text-gray-400')
+      
+      // Find opening and closing brackets
+      const openingBrackets = Array.from(allSpans).filter((span) => 
+        span.textContent === '<'
+      )
+      const closingBrackets = Array.from(allSpans).filter((span) => 
+        span.textContent === '</'
+      )
+      
+      // Both opening and closing brackets should have negative margin to align properly
+      expect(openingBrackets.length).toBeGreaterThan(0)
+      expect(closingBrackets.length).toBeGreaterThan(0)
+      
+      // Check that opening brackets have negative margin
+      const openingHasNegativeMargin = openingBrackets.some((element) =>
+        (element as HTMLElement).style.marginLeft === '-54px'
+      )
+      expect(openingHasNegativeMargin).toBe(true)
+      
+      // Check that closing brackets have negative margin
+      const closingHasNegativeMargin = closingBrackets.every((element) =>
+        (element as HTMLElement).style.marginLeft === '-54px'
+      )
+      expect(closingHasNegativeMargin).toBe(true)
+    })
+
     describe('collapse/expand functionality', () => {
       let viewer: ReturnType<typeof createXmlViewer>
       

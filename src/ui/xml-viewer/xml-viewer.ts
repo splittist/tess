@@ -433,7 +433,9 @@ function renderElement(
   }
 
   const closeTag = document.createDocumentFragment()
-  closeTag.appendChild(createToken('</', 'text-gray-400'))
+  const closeBracket = createToken('</', 'text-gray-400')
+  closeBracket.style.marginLeft = `-${CONTINUATION_INDENT_PX}px`  // Pull closing tag back to align with opening tag
+  closeTag.appendChild(closeBracket)
   closeTag.appendChild(createToken(element.tagName, 'text-indigo-700 font-semibold'))
   closeTag.appendChild(createToken('>', 'text-gray-400'))
 
