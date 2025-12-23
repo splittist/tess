@@ -84,8 +84,10 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
     return result
   }
 
+  // @ts-ignore - Node.js fallback for environments without DecompressionStream
   const { inflateRawSync } = await import('node:zlib')
-  const inflated = inflateRawSync(Buffer.from(data))
+  // @ts-ignore
+  const inflated = inflateRawSync((globalThis as any).Buffer.from(data))
   return new Uint8Array(inflated.buffer, inflated.byteOffset, inflated.byteLength)
 }
 
