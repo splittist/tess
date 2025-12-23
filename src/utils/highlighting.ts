@@ -45,8 +45,11 @@ export function applyOverlayStyles(lines: Iterable<HTMLElement>, state: OverlayS
 
     const lineNamespace = line.dataset.namespace ?? ''
     const lineElement = line.dataset.elementType ?? ''
+    const attributeNamespaces = line.dataset.attributeNamespaces?.split(',') ?? []
 
-    const matchesNamespace = focusNamespace ? lineNamespace === focusNamespace : false
+    const matchesNamespace = focusNamespace 
+      ? lineNamespace === focusNamespace || attributeNamespaces.includes(focusNamespace)
+      : false
     const matchesElement = targetElement ? lineElement === targetElement : false
 
     const shouldHighlight = state.allowCombination

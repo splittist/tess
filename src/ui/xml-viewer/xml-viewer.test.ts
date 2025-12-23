@@ -384,5 +384,51 @@ describe('xml-viewer', () => {
         scrollTarget: { attribute: 'w:id', value: '1' }
       })
     })
+
+    describe('namespace overlay highlighting', () => {
+      it('should track attribute namespaces on lines', () => {
+        const xml = '<root xmlns:w="http://w" xmlns:r="http://r"><element w:id="123" r:value="abc">content</element></root>'
+        const viewer = createXmlViewer({ xml })
+        document.body.appendChild(viewer.element)
+
+        // Find all divs with dataset properties
+        const allDivs = viewer.element.querySelectorAll('div')
+        const elementLine = Array.from(allDivs).find((div: Element) => 
+          (div as HTMLElement).dataset.tagName === 'element'
+        ) as HTMLElement
+        
+        expect(elementLine).toBeTruthy()
+        expect(elementLine.dataset.attributeNamespaces).toBe('w,r')
+      })
+
+      it('should not add attributeNamespaces dataset if no namespaced attributes', () => {
+        const xml = '<root><element id="123" value="abc">content</element></root>'
+        const viewer = createXmlViewer({ xml })
+        document.body.appendChild(viewer.element)
+
+        const allDivs = viewer.element.querySelectorAll('div')
+        const elementLine = Array.from(allDivs).find((div: Element) => 
+          (div as HTMLElement).dataset.tagName === 'element'
+        ) as HTMLElement
+        
+        expect(elementLine).toBeTruthy()
+        expect(elementLine.dataset.attributeNamespaces).toBeUndefined()
+      })
+
+      it('should track unique attribute namespaces only once', () => {
+        const xml = '<root xmlns:w="http://w" xmlns:r="http://r"><element w:id="123" w:val="456" r:value="abc">content</element></root>'
+        const viewer = createXmlViewer({ xml })
+        document.body.appendChild(viewer.element)
+
+        const allDivs = viewer.element.querySelectorAll('div')
+        const elementLine = Array.from(allDivs).find((div: Element) => 
+          (div as HTMLElement).dataset.tagName === 'element'
+        ) as HTMLElement
+        
+        expect(elementLine).toBeTruthy()
+        // Should only have 'w' and 'r', not 'w' twice
+        expect(elementLine.dataset.attributeNamespaces).toBe('w,r')
+      })
+    })
   })
 })
