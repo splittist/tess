@@ -84,8 +84,12 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
     return result
   }
 
+  // Node.js fallback for environments without DecompressionStream
+  // @ts-ignore - node:zlib is only available in Node.js environments
   const { inflateRawSync } = await import('node:zlib')
-  const inflated = inflateRawSync(Buffer.from(data))
+  // @ts-ignore - Buffer is only available in Node.js environments  
+  const BufferClass = globalThis.Buffer
+  const inflated = inflateRawSync(BufferClass.from(data))
   return new Uint8Array(inflated.buffer, inflated.byteOffset, inflated.byteLength)
 }
 
